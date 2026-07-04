@@ -1,0 +1,23 @@
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# Local scan data can be large.
+data/raw/*
+data/sessions/*
+outputs/ply/*
+outputs/obj/*
+outputs/stl/*
+
+!data/raw/.gitkeep
+!data/sessions/.gitkeep
+!outputs/ply/.gitkeep
+!outputs/obj/.gitkeep
+!outputs/stl/.gitkeep
+
+# Calibration/config examples can be committed intentionally.
+*.log
+*.tmp
