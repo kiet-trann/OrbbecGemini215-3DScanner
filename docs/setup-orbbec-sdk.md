@@ -19,12 +19,23 @@ python -m venv .venv
 pip install -e .[dev]
 ```
 
+If pip is configured with `PIP_NO_INDEX=1`, install from PyPI explicitly:
+
+```powershell
+$env:PIP_NO_INDEX="0"
+.\.venv\Scripts\python.exe -m pip install --index-url https://pypi.org/simple --upgrade pyorbbecsdk2 opencv-contrib-python numpy
+```
+
 ## Camera Setup Checklist
 
 - Install Orbbec SDK/runtime required by `pyorbbecsdk2`.
 - Connect Gemini 215 through USB 3.0.
 - Confirm Windows Device Manager or Linux `lsusb` can see the camera.
-- Start with `scripts/01_rgbd_viewer.py`.
+- Start with:
+
+```powershell
+.\.venv\Scripts\python.exe scripts\01_rgbd_viewer.py
+```
 
 ## Marker Setup
 

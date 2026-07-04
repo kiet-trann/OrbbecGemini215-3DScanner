@@ -21,3 +21,4 @@ outputs/stl/*
 # Calibration/config examples can be committed intentionally.
 *.log
 *.tmp
+Log/

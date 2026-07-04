@@ -1,5 +1,12 @@
 import numpy as np
 
+try:
+    from test_support import add_src_to_path
+except ImportError:
+    from tests.test_support import add_src_to_path
+
+add_src_to_path()
+
 from scanner_app.processing.depth import depth_to_meters, filter_depth_range
 
 
