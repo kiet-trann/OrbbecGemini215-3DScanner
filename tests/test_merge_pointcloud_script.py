@@ -42,12 +42,17 @@ class MergePointCloudScriptTests(unittest.TestCase):
             elapsed_seconds=3.0,
             tracked_frames=8,
             skipped_frames=4,
+            marker_frames=9,
+            no_marker_frames=2,
+            empty_cloud_frames=1,
+            rejected_count=6,
             merged_points=12345,
         )
 
         self.assertEqual(
             status,
-            "Merge frames: 12 | 4.0 FPS | tracked=8 | skipped=4 | merged_points=12345",
+            "Merge frames: 12 | 4.0 FPS | tracked=8 | skipped=4 | markers=9 | "
+            "no_marker=2 | empty_cloud=1 | rejected=6 | merged_points=12345",
         )
 
 

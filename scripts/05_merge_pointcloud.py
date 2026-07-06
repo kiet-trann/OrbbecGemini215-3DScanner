@@ -16,7 +16,7 @@ from scanner_app.camera.orbbec_capture import (
 from scanner_app.export.ply import write_point_cloud_ply
 from scanner_app.fusion.merge import merge_point_clouds, transform_point_cloud
 from scanner_app.pointcloud.generate import PointCloudData, rgbd_frame_to_point_cloud
-from scanner_app.tracking.aruco import detect_markers
+from scanner_app.tracking.aruco import detect_markers_with_rejected
 from scanner_app.tracking.pose import camera_pose_from_detection, load_marker_world_transforms
 
 
@@ -48,12 +48,18 @@ def format_merge_status(
     elapsed_seconds: float,
     tracked_frames: int,
     skipped_frames: int,
+    marker_frames: int,
+    no_marker_frames: int,
+    empty_cloud_frames: int,
+    rejected_count: int,
     merged_points: int,
 ) -> str:
     fps = frame_count / elapsed_seconds if elapsed_seconds > 0 else 0.0
     return (
         f"Merge frames: {frame_count} | {fps:.1f} FPS | tracked={tracked_frames} | "
-        f"skipped={skipped_frames} | merged_points={merged_points}"
+        f"skipped={skipped_frames} | markers={marker_frames} | "
+        f"no_marker={no_marker_frames} | empty_cloud={empty_cloud_frames} | "
+        f"rejected={rejected_count} | merged_points={merged_points}"
     )
 
 
@@ -72,6 +78,10 @@ def main(argv: list[str] | None = None) -> None:
         frame_count = 0
         tracked_frames = 0
         skipped_frames = 0
+        marker_frames = 0
+        no_marker_frames = 0
+        empty_cloud_frames = 0
+        rejected_count = 0
         merged_points = 0
         started_at = time.monotonic()
         last_status_at = started_at
@@ -81,14 +91,17 @@ def main(argv: list[str] | None = None) -> None:
             frame_count += 1
             if frame.color is None:
                 skipped_frames += 1
+                no_marker_frames += 1
             else:
-                detections = detect_markers(
+                detections, frame_rejected_count = detect_markers_with_rejected(
                     frame.color,
                     intrinsics=intrinsics,
                     marker_size_m=args.marker_size_m,
                     dictionary_name=args.dictionary,
                 )
+                rejected_count = frame_rejected_count
                 if detections:
+                    marker_frames += 1
                     detection = detections[0]
                     marker_to_world = marker_world_transforms.get(detection.marker_id)
                     pose_sample = camera_pose_from_detection(
@@ -112,8 +125,10 @@ def main(argv: list[str] | None = None) -> None:
                         tracked_frames += 1
                     else:
                         skipped_frames += 1
+                        empty_cloud_frames += 1
                 else:
                     skipped_frames += 1
+                    no_marker_frames += 1
 
             now = time.monotonic()
             if now - last_status_at >= STATUS_INTERVAL_SECONDS:
@@ -123,6 +138,10 @@ def main(argv: list[str] | None = None) -> None:
                         now - started_at,
                         tracked_frames,
                         skipped_frames,
+                        marker_frames,
+                        no_marker_frames,
+                        empty_cloud_frames,
+                        rejected_count,
                         merged_points,
                     )
                 )
@@ -130,6 +149,20 @@ def main(argv: list[str] | None = None) -> None:
 
             if args.max_frames > 0 and frame_count >= args.max_frames:
                 break
+
+        print(
+            format_merge_status(
+                frame_count,
+                time.monotonic() - started_at,
+                tracked_frames,
+                skipped_frames,
+                marker_frames,
+                no_marker_frames,
+                empty_cloud_frames,
+                rejected_count,
+                merged_points,
+            )
+        )
 
         merged_cloud = merge_point_clouds(transformed_clouds)
         if len(merged_cloud.points_xyz) == 0:
