@@ -84,6 +84,12 @@ Luu camera pose 4x4 tu marker tracking vao `data/sessions/*.jsonl`:
 python scripts/04_pose_estimation.py --marker-size-m 0.06
 ```
 
+Scan va ghep cac frame co marker thanh mot point cloud tong:
+
+```powershell
+python scripts/05_merge_pointcloud.py --marker-size-m 0.06 --max-frames 120
+```
+
 ## Prototype Definition of Done
 
 - Gemini 215 ket noi on dinh.

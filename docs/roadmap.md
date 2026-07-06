@@ -48,9 +48,11 @@ Deliverable: `scripts/04_pose_estimation.py`
 
 Deliverable: `scripts/05_merge_pointcloud.py`
 
-- Transform each valid frame by camera pose.
-- Merge into a global point cloud.
-- Export `outputs/ply/merged_cloud.ply`.
+- Capture live RGB-D frames while tracking marker pose.
+- Transform each valid point cloud frame by `camera_to_world`.
+- Skip frames without marker pose or valid depth points.
+- Merge tracked frames into a global point cloud.
+- Export `outputs/ply/merged_cloud_*.ply`.
 
 ## Milestone 6: TSDF Fusion
 

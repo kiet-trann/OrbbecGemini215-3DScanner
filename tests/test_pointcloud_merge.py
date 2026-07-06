@@ -1,0 +1,77 @@
+import unittest
+
+import numpy as np
+
+try:
+    from test_support import add_src_to_path
+except ImportError:
+    from tests.test_support import add_src_to_path
+
+add_src_to_path()
+
+from scanner_app.fusion.merge import merge_point_clouds, transform_point_cloud, transform_points
+from scanner_app.pointcloud.generate import PointCloudData
+
+
+class PointCloudMergeTests(unittest.TestCase):
+    def test_transform_points_applies_camera_to_world_translation(self) -> None:
+        points = np.array([[0.0, 0.0, 1.0], [1.0, 2.0, 3.0]], dtype=np.float32)
+        camera_to_world = np.eye(4, dtype=np.float64)
+        camera_to_world[:3, 3] = [10.0, 20.0, 30.0]
+
+        transformed = transform_points(points, camera_to_world)
+
+        np.testing.assert_array_equal(
+            transformed,
+            np.array([[10.0, 20.0, 31.0], [11.0, 22.0, 33.0]], dtype=np.float64),
+        )
+
+    def test_transform_point_cloud_preserves_rgb_colors(self) -> None:
+        point_cloud = PointCloudData(
+            points_xyz=np.array([[0.0, 0.0, 1.0]], dtype=np.float32),
+            colors_rgb=np.array([[1.0, 0.0, 0.0]], dtype=np.float32),
+        )
+        camera_to_world = np.eye(4, dtype=np.float64)
+        camera_to_world[:3, 3] = [0.0, 0.0, 1.0]
+
+        transformed = transform_point_cloud(point_cloud, camera_to_world)
+
+        np.testing.assert_array_equal(transformed.points_xyz, np.array([[0.0, 0.0, 2.0]]))
+        np.testing.assert_array_equal(transformed.colors_rgb, point_cloud.colors_rgb)
+
+    def test_merge_point_clouds_concatenates_points_and_colors(self) -> None:
+        first = PointCloudData(
+            points_xyz=np.array([[0.0, 0.0, 1.0]], dtype=np.float32),
+            colors_rgb=np.array([[1.0, 0.0, 0.0]], dtype=np.float32),
+        )
+        second = PointCloudData(
+            points_xyz=np.array([[1.0, 0.0, 1.0]], dtype=np.float32),
+            colors_rgb=np.array([[0.0, 1.0, 0.0]], dtype=np.float32),
+        )
+
+        merged = merge_point_clouds([first, second])
+
+        np.testing.assert_array_equal(
+            merged.points_xyz,
+            np.array([[0.0, 0.0, 1.0], [1.0, 0.0, 1.0]], dtype=np.float32),
+        )
+        np.testing.assert_array_equal(
+            merged.colors_rgb,
+            np.array([[1.0, 0.0, 0.0], [0.0, 1.0, 0.0]], dtype=np.float32),
+        )
+
+    def test_merge_point_clouds_omits_colors_when_any_frame_is_depth_only(self) -> None:
+        colored = PointCloudData(
+            points_xyz=np.array([[0.0, 0.0, 1.0]], dtype=np.float32),
+            colors_rgb=np.array([[1.0, 0.0, 0.0]], dtype=np.float32),
+        )
+        depth_only = PointCloudData(points_xyz=np.array([[1.0, 0.0, 1.0]], dtype=np.float32))
+
+        merged = merge_point_clouds([colored, depth_only])
+
+        self.assertIsNone(merged.colors_rgb)
+        self.assertEqual(len(merged.points_xyz), 2)
+
+
+if __name__ == "__main__":
+    unittest.main()
