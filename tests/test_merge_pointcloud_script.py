@@ -55,6 +55,45 @@ class MergePointCloudScriptTests(unittest.TestCase):
             "no_marker=2 | empty_cloud=1 | rejected=6 | merged_points=12345",
         )
 
+    def test_parser_accepts_target_tracked_frames(self) -> None:
+        module = load_merge_script_module()
+
+        args = module.build_argument_parser().parse_args(["--target-tracked-frames", "50"])
+
+        self.assertEqual(args.target_tracked_frames, 50)
+
+    def test_should_stop_capture_when_target_tracked_frames_is_reached(self) -> None:
+        module = load_merge_script_module()
+
+        self.assertTrue(
+            module.should_stop_capture(
+                frame_count=120,
+                tracked_frames=50,
+                max_frames=0,
+                target_tracked_frames=50,
+            )
+        )
+        self.assertFalse(
+            module.should_stop_capture(
+                frame_count=120,
+                tracked_frames=49,
+                max_frames=0,
+                target_tracked_frames=50,
+            )
+        )
+
+    def test_should_stop_capture_when_max_frames_is_reached_without_target(self) -> None:
+        module = load_merge_script_module()
+
+        self.assertTrue(
+            module.should_stop_capture(
+                frame_count=120,
+                tracked_frames=3,
+                max_frames=120,
+                target_tracked_frames=0,
+            )
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

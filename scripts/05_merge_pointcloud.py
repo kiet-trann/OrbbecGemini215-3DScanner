@@ -34,6 +34,12 @@ def build_argument_parser() -> argparse.ArgumentParser:
     parser.add_argument("--min-depth-m", type=float, default=0.15)
     parser.add_argument("--max-depth-m", type=float, default=1.50)
     parser.add_argument("--max-frames", type=int, default=120)
+    parser.add_argument(
+        "--target-tracked-frames",
+        type=int,
+        default=0,
+        help="Stop after N frames with valid marker pose; 0 disables this target.",
+    )
     parser.add_argument("--output", type=Path, default=None)
     return parser
 
@@ -61,6 +67,18 @@ def format_merge_status(
         f"no_marker={no_marker_frames} | empty_cloud={empty_cloud_frames} | "
         f"rejected={rejected_count} | merged_points={merged_points}"
     )
+
+
+def should_stop_capture(
+    *,
+    frame_count: int,
+    tracked_frames: int,
+    max_frames: int,
+    target_tracked_frames: int,
+) -> bool:
+    if target_tracked_frames > 0 and tracked_frames >= target_tracked_frames:
+        return True
+    return max_frames > 0 and frame_count >= max_frames
 
 
 def main(argv: list[str] | None = None) -> None:
@@ -147,7 +165,12 @@ def main(argv: list[str] | None = None) -> None:
                 )
                 last_status_at = now
 
-            if args.max_frames > 0 and frame_count >= args.max_frames:
+            if should_stop_capture(
+                frame_count=frame_count,
+                tracked_frames=tracked_frames,
+                max_frames=args.max_frames,
+                target_tracked_frames=args.target_tracked_frames,
+            ):
                 break
 
         print(

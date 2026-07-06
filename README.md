@@ -101,6 +101,12 @@ Scan va ghep cac frame co marker thanh mot point cloud tong:
 python scripts/05_merge_pointcloud.py --marker-size-m 0.06 --max-frames 120
 ```
 
+Khi marker de mat khoi khung hinh, co the dung theo so frame track duoc thay vi tong so frame camera:
+
+```powershell
+python scripts/05_merge_pointcloud.py --marker-size-m 0.06 --target-tracked-frames 50 --max-frames 1000
+```
+
 ## Prototype Definition of Done
 
 - Gemini 215 ket noi on dinh.
