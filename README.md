@@ -78,6 +78,12 @@ Smoke test khong mo cua so GUI:
 python scripts/03_marker_tracking.py --headless --max-frames 3
 ```
 
+Luu camera pose 4x4 tu marker tracking vao `data/sessions/*.jsonl`:
+
+```powershell
+python scripts/04_pose_estimation.py --marker-size-m 0.06
+```
+
 ## Prototype Definition of Done
 
 - Gemini 215 ket noi on dinh.

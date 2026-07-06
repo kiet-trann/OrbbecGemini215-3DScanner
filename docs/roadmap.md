@@ -39,9 +39,10 @@ Deliverable: `scripts/03_marker_tracking.py`
 
 Deliverable: `scripts/04_pose_estimation.py`
 
-- Convert marker pose to camera pose.
-- Save timestamp and 4x4 transform per frame.
-- Log OK / weak / lost tracking.
+- Convert marker `rvec` / `tvec` to a marker-to-camera 4x4 transform.
+- Invert marker pose into `camera_to_world`, using marker layout transforms when available.
+- Save timestamp, marker id, and 4x4 transform per tracked frame to JSONL.
+- Log OK / lost tracking.
 
 ## Milestone 5: Merge Point Clouds
 
