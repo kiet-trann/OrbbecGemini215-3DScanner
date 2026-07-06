@@ -17,6 +17,14 @@ Deliverable: `scripts/02_export_pointcloud.py`
 - Export `outputs/ply/single_frame.ply`.
 - Validate in CloudCompare, MeshLab, Blender, or Open3D.
 
+## Milestone 2b: Real-Time Point Cloud Preview
+
+Deliverable: `scripts/03_pointcloud_viewer.py`
+
+- Convert live depth frames to point cloud.
+- Display point cloud in a non-blocking Open3D window.
+- Log frame rate and point count while running.
+
 ## Milestone 3: Marker Tracking
 
 Deliverable: `scripts/03_marker_tracking.py`
