@@ -55,10 +55,13 @@ class OrbbecCapture:
         sdk_module: Any | None = None,
         color_frame_converter: Any | None = None,
         timeout_ms: int = 1000,
+        align_to_depth: bool = False,
     ) -> None:
         self._sdk = sdk_module
         self._color_frame_converter = color_frame_converter
         self._timeout_ms = timeout_ms
+        self._align_to_depth = align_to_depth
+        self._align_filter: Any | None = None
         self._pipeline: Any | None = None
         self._last_depth_scale: float | None = None
 
@@ -69,10 +72,12 @@ class OrbbecCapture:
         self._assert_device_available(sdk)
         self._pipeline = sdk.Pipeline()
         config = self._build_stream_config(sdk, self._pipeline)
+        self._align_filter = self._build_align_filter(sdk) if self._align_to_depth else None
         try:
             self._pipeline.start(config)
         except Exception as error:
             self._pipeline = None
+            self._align_filter = None
             raise OrbbecCameraError(f"Failed to start Orbbec camera: {error}") from error
 
     def read(self) -> RgbdFrame:
@@ -82,6 +87,11 @@ class OrbbecCapture:
         frames = self._pipeline.wait_for_frames(self._timeout_ms)
         if frames is None:
             raise OrbbecFrameError("No RGB-D frames received from Orbbec camera.")
+
+        if self._align_filter is not None:
+            frames = self._align_filter.process(frames)
+            if frames is None:
+                raise OrbbecFrameError("RGB-D alignment did not return a frame set.")
 
         depth_frame = frames.get_depth_frame()
         if depth_frame is None:
@@ -127,6 +137,7 @@ class OrbbecCapture:
         if self._pipeline is not None:
             self._pipeline.stop()
             self._pipeline = None
+        self._align_filter = None
 
     @staticmethod
     def _load_sdk() -> Any:
@@ -177,7 +188,7 @@ class OrbbecCapture:
         try:
             color_sensor = getattr(sensor_type, "COLOR_SENSOR")
             color_profiles = pipeline.get_stream_profile_list(color_sensor)
-            color_profile = color_profiles.get_default_video_stream_profile()
+            color_profile = OrbbecCapture._color_stream_profile(sdk, color_profiles)
             config.enable_stream(color_profile)
         except Exception:
             pass
@@ -188,6 +199,27 @@ class OrbbecCapture:
             set_aggregate_mode(getattr(aggregate_mode, "FULL_FRAME_REQUIRE"))
 
         return config
+
+    @staticmethod
+    def _color_stream_profile(sdk: Any, color_profiles: Any) -> Any:
+        frame_format = getattr(getattr(sdk, "OBFormat", None), "RGB", None)
+        get_video_profile = getattr(color_profiles, "get_video_stream_profile", None)
+        if frame_format is not None and get_video_profile is not None:
+            try:
+                return get_video_profile(0, 0, frame_format, 0)
+            except Exception:
+                pass
+        return color_profiles.get_default_video_stream_profile()
+
+    @staticmethod
+    def _build_align_filter(sdk: Any) -> Any:
+        align_filter_factory = getattr(sdk, "AlignFilter", None)
+        stream_type = getattr(sdk, "OBStreamType", None)
+        if align_filter_factory is None or stream_type is None:
+            raise OrbbecCameraError("Orbbec SDK does not provide RGB-D alignment support.")
+
+        depth_stream = getattr(stream_type, "DEPTH_STREAM")
+        return align_filter_factory(align_to_stream=depth_stream)
 
     def _convert_color_frame(self, color_frame: Any) -> np.ndarray:
         if self._color_frame_converter is not None:

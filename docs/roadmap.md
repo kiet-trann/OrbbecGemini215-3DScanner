@@ -22,7 +22,8 @@ Deliverable: `scripts/02_export_pointcloud.py`
 Deliverable: `scripts/03_pointcloud_viewer.py`
 
 - Convert live depth frames to point cloud.
-- Display point cloud in a non-blocking Open3D window.
+- Align RGB to depth when available.
+- Display colored point cloud in a non-blocking Open3D window.
 - Log frame rate and point count while running.
 
 ## Milestone 3: Marker Tracking

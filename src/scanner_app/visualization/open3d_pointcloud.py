@@ -14,9 +14,18 @@ def make_open3d_point_cloud(point_cloud: PointCloudData) -> o3d.geometry.PointCl
     return cloud
 
 
-def format_pointcloud_status(frame_count: int, elapsed_seconds: float, point_count: int) -> str:
+def format_pointcloud_status(
+    frame_count: int,
+    elapsed_seconds: float,
+    point_count: int,
+    has_color: bool = False,
+) -> str:
     fps = frame_count / elapsed_seconds if elapsed_seconds > 0 else 0.0
-    return f"Point cloud frames: {frame_count} | {fps:.1f} FPS | points={point_count}"
+    color_status = "color" if has_color else "depth-only"
+    return (
+        f"Point cloud frames: {frame_count} | {fps:.1f} FPS | "
+        f"points={point_count} | {color_status}"
+    )
 
 
 class Open3DPointCloudViewer:

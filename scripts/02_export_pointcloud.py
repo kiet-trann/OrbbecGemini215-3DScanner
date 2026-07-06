@@ -27,7 +27,7 @@ def build_output_path(now: datetime | None = None) -> Path:
 
 
 def main() -> None:
-    camera = OrbbecCapture()
+    camera = OrbbecCapture(align_to_depth=True)
     try:
         camera.start()
         print("Capturing one RGB-D frame from Gemini 215...")

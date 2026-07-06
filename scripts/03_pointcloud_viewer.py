@@ -36,7 +36,7 @@ def build_argument_parser() -> argparse.ArgumentParser:
 
 def main(argv: list[str] | None = None) -> None:
     args = build_argument_parser().parse_args(argv)
-    camera = OrbbecCapture()
+    camera = OrbbecCapture(align_to_depth=True)
     viewer = None
 
     try:
@@ -73,6 +73,7 @@ def main(argv: list[str] | None = None) -> None:
                         frame_count,
                         now - started_at,
                         len(point_cloud.points_xyz),
+                        has_color=point_cloud.colors_rgb is not None,
                     )
                 )
                 last_status_at = now

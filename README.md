@@ -38,7 +38,7 @@ tests/                 Test cho module xu ly doc lap
 
 1. `scripts/01_rgbd_viewer.py` - Mo camera va hien thi RGB/Depth.
 2. `scripts/02_export_pointcloud.py` - Xuat `single_frame.ply`.
-2b. `scripts/03_pointcloud_viewer.py` - Hien thi point cloud depth real-time bang Open3D.
+2b. `scripts/03_pointcloud_viewer.py` - Hien thi point cloud co mau real-time bang Open3D.
 3. `scripts/03_marker_tracking.py` - Detect marker va ve truc XYZ.
 4. `scripts/04_pose_estimation.py` - Tinh camera pose 4x4.
 5. `scripts/05_merge_pointcloud.py` - Ghep point cloud nhieu frame.
@@ -60,7 +60,7 @@ Sau khi cai Orbbec SDK va cam camera qua USB 3.0:
 python scripts/01_rgbd_viewer.py
 ```
 
-Xem point cloud depth real-time:
+Xem point cloud co mau real-time:
 
 ```powershell
 python scripts/03_pointcloud_viewer.py

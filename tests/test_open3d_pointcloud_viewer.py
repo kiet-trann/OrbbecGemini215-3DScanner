@@ -18,9 +18,14 @@ from scanner_app.visualization.open3d_pointcloud import (
 
 class Open3DPointCloudViewerTests(unittest.TestCase):
     def test_format_pointcloud_status_includes_frame_rate_and_point_count(self) -> None:
-        status = format_pointcloud_status(frame_count=20, elapsed_seconds=2.0, point_count=1234)
+        status = format_pointcloud_status(
+            frame_count=20,
+            elapsed_seconds=2.0,
+            point_count=1234,
+            has_color=True,
+        )
 
-        self.assertEqual(status, "Point cloud frames: 20 | 10.0 FPS | points=1234")
+        self.assertEqual(status, "Point cloud frames: 20 | 10.0 FPS | points=1234 | color")
 
     def test_make_open3d_point_cloud_sets_points_and_optional_colors(self) -> None:
         points = np.array([[0.0, 0.0, 1.0], [1.0, 0.0, 2.0]], dtype=np.float32)

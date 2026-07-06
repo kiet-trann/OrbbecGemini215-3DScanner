@@ -101,15 +101,36 @@ class FakeSdk:
     class OBFrameAggregateOutputMode:
         FULL_FRAME_REQUIRE = "full-frame-require"
 
+    class OBStreamType:
+        DEPTH_STREAM = "depth-stream"
+
+    class OBFormat:
+        RGB = "rgb"
+
     def __init__(self) -> None:
         self.pipeline = FakePipeline()
         self.config = FakeConfig()
+        self.align_filter = None
 
     def Pipeline(self) -> FakePipeline:
         return self.pipeline
 
     def Config(self):
         return self.config
+
+    def AlignFilter(self, align_to_stream):
+        self.align_filter = FakeAlignFilter(align_to_stream)
+        return self.align_filter
+
+
+class FakeAlignFilter:
+    def __init__(self, align_to_stream) -> None:
+        self.align_to_stream = align_to_stream
+        self.processed_frames = None
+
+    def process(self, frames):
+        self.processed_frames = frames
+        return frames
 
 
 class FakeVideoProfileList:
@@ -118,6 +139,9 @@ class FakeVideoProfileList:
 
     def get_default_video_stream_profile(self):
         return self.profile
+
+    def get_video_stream_profile(self, width, height, frame_format, fps):
+        return f"{self.profile}-rgb" if frame_format == "rgb" else self.profile
 
 
 class FakeConfig:
@@ -185,6 +209,15 @@ class OrbbecCaptureTests(unittest.TestCase):
 
         self.assertEqual(sdk.config.frame_aggregate_output_mode, "full-frame-require")
 
+    def test_start_prefers_rgb_color_profile_when_sdk_supports_it(self) -> None:
+        sdk = FakeSdk()
+
+        capture = OrbbecCapture(sdk_module=sdk)
+
+        capture.start()
+
+        self.assertIn("color-profile-rgb", sdk.config.enabled_profiles)
+
     def test_start_read_intrinsics_and_stop_use_sdk_pipeline(self) -> None:
         sdk = FakeSdk()
         capture = OrbbecCapture(
@@ -210,6 +243,21 @@ class OrbbecCaptureTests(unittest.TestCase):
         self.assertIsInstance(intrinsics, CameraIntrinsics)
         self.assertEqual(intrinsics.fx, 500.0)
         self.assertEqual(capture.depth_scale(), 0.5)
+
+    def test_align_to_depth_processes_frame_set_before_reading_frames(self) -> None:
+        sdk = FakeSdk()
+        capture = OrbbecCapture(
+            sdk_module=sdk,
+            color_frame_converter=lambda frame: frame.data,
+            align_to_depth=True,
+        )
+
+        capture.start()
+        capture.read()
+
+        self.assertIsNotNone(sdk.align_filter)
+        self.assertEqual(sdk.align_filter.align_to_stream, "depth-stream")
+        self.assertIsInstance(sdk.align_filter.processed_frames, FakeFrameSet)
 
     def test_start_creates_sdk_log_directory_and_wraps_sdk_errors(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
