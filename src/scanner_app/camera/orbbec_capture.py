@@ -68,8 +68,9 @@ class OrbbecCapture:
         self._ensure_sdk_log_directory()
         self._assert_device_available(sdk)
         self._pipeline = sdk.Pipeline()
+        config = self._build_stream_config(sdk, self._pipeline)
         try:
-            self._pipeline.start()
+            self._pipeline.start(config)
         except Exception as error:
             self._pipeline = None
             raise OrbbecCameraError(f"Failed to start Orbbec camera: {error}") from error
@@ -156,6 +157,37 @@ class OrbbecCapture:
                 "No Orbbec device found. Connect Gemini 215 through USB 3.0 and verify it in "
                 "Orbbec Viewer or Device Manager."
             )
+
+    @staticmethod
+    def _build_stream_config(sdk: Any, pipeline: Any) -> Any | None:
+        config_factory = getattr(sdk, "Config", None)
+        sensor_type = getattr(sdk, "OBSensorType", None)
+        if config_factory is None or sensor_type is None:
+            return None
+
+        config = config_factory()
+        try:
+            depth_sensor = getattr(sensor_type, "DEPTH_SENSOR")
+            depth_profiles = pipeline.get_stream_profile_list(depth_sensor)
+            depth_profile = depth_profiles.get_default_video_stream_profile()
+            config.enable_stream(depth_profile)
+        except Exception as error:
+            raise OrbbecCameraError(f"Cannot configure Orbbec depth stream: {error}") from error
+
+        try:
+            color_sensor = getattr(sensor_type, "COLOR_SENSOR")
+            color_profiles = pipeline.get_stream_profile_list(color_sensor)
+            color_profile = color_profiles.get_default_video_stream_profile()
+            config.enable_stream(color_profile)
+        except Exception:
+            pass
+
+        aggregate_mode = getattr(sdk, "OBFrameAggregateOutputMode", None)
+        set_aggregate_mode = getattr(config, "set_frame_aggregate_output_mode", None)
+        if aggregate_mode is not None and set_aggregate_mode is not None:
+            set_aggregate_mode(getattr(aggregate_mode, "FULL_FRAME_REQUIRE"))
+
+        return config
 
     def _convert_color_frame(self, color_frame: Any) -> np.ndarray:
         if self._color_frame_converter is not None:

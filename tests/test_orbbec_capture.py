@@ -73,9 +73,14 @@ class FakePipeline:
         self.started = False
         self.stopped = False
         self.wait_timeout_ms = None
+        self.start_config = None
 
-    def start(self) -> None:
+    def start(self, config=None) -> None:
         self.started = True
+        self.start_config = config
+
+    def get_stream_profile_list(self, sensor_type: str) -> "FakeVideoProfileList":
+        return FakeVideoProfileList(f"{sensor_type}-profile")
 
     def wait_for_frames(self, timeout_ms: int) -> FakeFrameSet:
         self.wait_timeout_ms = timeout_ms
@@ -89,15 +94,46 @@ class FakePipeline:
 
 
 class FakeSdk:
+    class OBSensorType:
+        DEPTH_SENSOR = "depth"
+        COLOR_SENSOR = "color"
+
+    class OBFrameAggregateOutputMode:
+        FULL_FRAME_REQUIRE = "full-frame-require"
+
     def __init__(self) -> None:
         self.pipeline = FakePipeline()
+        self.config = FakeConfig()
 
     def Pipeline(self) -> FakePipeline:
         return self.pipeline
 
+    def Config(self):
+        return self.config
+
+
+class FakeVideoProfileList:
+    def __init__(self, profile) -> None:
+        self.profile = profile
+
+    def get_default_video_stream_profile(self):
+        return self.profile
+
+
+class FakeConfig:
+    def __init__(self) -> None:
+        self.enabled_profiles = []
+        self.frame_aggregate_output_mode = None
+
+    def enable_stream(self, profile) -> None:
+        self.enabled_profiles.append(profile)
+
+    def set_frame_aggregate_output_mode(self, mode) -> None:
+        self.frame_aggregate_output_mode = mode
+
 
 class FailingPipeline:
-    def start(self) -> None:
+    def start(self, config=None) -> None:
         raise RuntimeError("No device found")
 
 
@@ -130,6 +166,25 @@ class NoDeviceSdk:
 
 
 class OrbbecCaptureTests(unittest.TestCase):
+    def test_start_configures_depth_stream_before_starting_pipeline(self) -> None:
+        sdk = FakeSdk()
+
+        capture = OrbbecCapture(sdk_module=sdk)
+
+        capture.start()
+
+        self.assertIs(sdk.pipeline.start_config, sdk.config)
+        self.assertIn("depth-profile", sdk.config.enabled_profiles)
+
+    def test_start_requires_full_rgbd_frame_sets_when_sdk_supports_it(self) -> None:
+        sdk = FakeSdk()
+
+        capture = OrbbecCapture(sdk_module=sdk)
+
+        capture.start()
+
+        self.assertEqual(sdk.config.frame_aggregate_output_mode, "full-frame-require")
+
     def test_start_read_intrinsics_and_stop_use_sdk_pipeline(self) -> None:
         sdk = FakeSdk()
         capture = OrbbecCapture(
