@@ -14,7 +14,11 @@ from scanner_app.camera.orbbec_capture import (
     OrbbecSdkNotAvailable,
 )
 from scanner_app.export.ply import write_point_cloud_ply
-from scanner_app.fusion.merge import merge_point_clouds, transform_point_cloud
+from scanner_app.fusion.merge import (
+    merge_point_clouds,
+    transform_point_cloud,
+    voxel_downsample_point_cloud,
+)
 from scanner_app.pointcloud.generate import PointCloudData, rgbd_frame_to_point_cloud
 from scanner_app.tracking.aruco import detect_markers_with_rejected
 from scanner_app.tracking.pose import camera_pose_from_detection, load_marker_world_transforms
@@ -39,6 +43,12 @@ def build_argument_parser() -> argparse.ArgumentParser:
         type=int,
         default=0,
         help="Stop after N frames with valid marker pose; 0 disables this target.",
+    )
+    parser.add_argument(
+        "--voxel-size-m",
+        type=float,
+        default=0.0,
+        help="Downsample merged cloud with this voxel size in meters; 0 disables downsampling.",
     )
     parser.add_argument("--output", type=Path, default=None)
     return parser
@@ -190,6 +200,14 @@ def main(argv: list[str] | None = None) -> None:
         merged_cloud = merge_point_clouds(transformed_clouds)
         if len(merged_cloud.points_xyz) == 0:
             raise OrbbecFrameError("No tracked point cloud frames were captured.")
+
+        raw_point_count = len(merged_cloud.points_xyz)
+        merged_cloud = voxel_downsample_point_cloud(merged_cloud, args.voxel_size_m)
+        if args.voxel_size_m > 0:
+            print(
+                f"Voxel downsampled merged cloud from {raw_point_count} to "
+                f"{len(merged_cloud.points_xyz)} points at {args.voxel_size_m:.4f}m."
+            )
 
         write_point_cloud_ply(
             output_path,

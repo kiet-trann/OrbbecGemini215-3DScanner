@@ -62,6 +62,13 @@ class MergePointCloudScriptTests(unittest.TestCase):
 
         self.assertEqual(args.target_tracked_frames, 50)
 
+    def test_parser_accepts_voxel_size_m(self) -> None:
+        module = load_merge_script_module()
+
+        args = module.build_argument_parser().parse_args(["--voxel-size-m", "0.003"])
+
+        self.assertEqual(args.voxel_size_m, 0.003)
+
     def test_should_stop_capture_when_target_tracked_frames_is_reached(self) -> None:
         module = load_merge_script_module()
 

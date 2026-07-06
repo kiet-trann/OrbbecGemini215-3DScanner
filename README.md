@@ -107,6 +107,12 @@ Khi marker de mat khoi khung hinh, co the dung theo so frame track duoc thay vi 
 python scripts/05_merge_pointcloud.py --marker-size-m 0.06 --target-tracked-frames 50 --max-frames 1000
 ```
 
+Giam dung luong PLY bang voxel downsample truoc khi ghi file:
+
+```powershell
+python scripts/05_merge_pointcloud.py --marker-size-m 0.06 --target-tracked-frames 50 --max-frames 1000 --voxel-size-m 0.003
+```
+
 ## Prototype Definition of Done
 
 - Gemini 215 ket noi on dinh.

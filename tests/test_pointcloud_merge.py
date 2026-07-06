@@ -9,7 +9,12 @@ except ImportError:
 
 add_src_to_path()
 
-from scanner_app.fusion.merge import merge_point_clouds, transform_point_cloud, transform_points
+from scanner_app.fusion.merge import (
+    merge_point_clouds,
+    transform_point_cloud,
+    transform_points,
+    voxel_downsample_point_cloud,
+)
 from scanner_app.pointcloud.generate import PointCloudData
 
 
@@ -71,6 +76,39 @@ class PointCloudMergeTests(unittest.TestCase):
 
         self.assertIsNone(merged.colors_rgb)
         self.assertEqual(len(merged.points_xyz), 2)
+
+    def test_voxel_downsample_point_cloud_reduces_nearby_points_and_preserves_color(self) -> None:
+        point_cloud = PointCloudData(
+            points_xyz=np.array(
+                [
+                    [0.000, 0.000, 0.000],
+                    [0.001, 0.001, 0.001],
+                    [0.020, 0.000, 0.000],
+                ],
+                dtype=np.float32,
+            ),
+            colors_rgb=np.array(
+                [
+                    [1.0, 0.0, 0.0],
+                    [0.0, 1.0, 0.0],
+                    [0.0, 0.0, 1.0],
+                ],
+                dtype=np.float32,
+            ),
+        )
+
+        downsampled = voxel_downsample_point_cloud(point_cloud, voxel_size_m=0.01)
+
+        self.assertEqual(len(downsampled.points_xyz), 2)
+        self.assertIsNotNone(downsampled.colors_rgb)
+        self.assertEqual(len(downsampled.colors_rgb), 2)
+
+    def test_voxel_downsample_point_cloud_returns_original_when_disabled(self) -> None:
+        point_cloud = PointCloudData(points_xyz=np.array([[0.0, 0.0, 0.0]], dtype=np.float32))
+
+        downsampled = voxel_downsample_point_cloud(point_cloud, voxel_size_m=0.0)
+
+        self.assertIs(downsampled, point_cloud)
 
 
 if __name__ == "__main__":
