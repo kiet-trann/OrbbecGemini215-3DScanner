@@ -30,9 +30,10 @@ Deliverable: `scripts/03_pointcloud_viewer.py`
 
 Deliverable: `scripts/03_marker_tracking.py`
 
-- Detect ArUco or AprilTag.
-- Draw marker axes.
-- Report tracking status.
+- Detect ArUco markers with OpenCV.
+- Estimate marker `rvec` / `tvec` from aligned RGB and depth intrinsics.
+- Draw marker outline and XYZ axes.
+- Report tracking status, marker id, and translation in meters.
 
 ## Milestone 4: Camera Pose
 

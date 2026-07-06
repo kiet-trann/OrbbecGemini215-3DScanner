@@ -66,6 +66,18 @@ Xem point cloud co mau real-time:
 python scripts/03_pointcloud_viewer.py
 ```
 
+Chay marker tracking voi ArUco `DICT_4X4_50`, marker vat ly 6 cm:
+
+```powershell
+python scripts/03_marker_tracking.py --marker-size-m 0.06
+```
+
+Smoke test khong mo cua so GUI:
+
+```powershell
+python scripts/03_marker_tracking.py --headless --max-frames 3
+```
+
 ## Prototype Definition of Done
 
 - Gemini 215 ket noi on dinh.
