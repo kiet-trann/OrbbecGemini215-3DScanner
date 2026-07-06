@@ -34,12 +34,31 @@ def detect_markers(
     dictionary_name: str = "DICT_4X4_50",
     dist_coeffs: np.ndarray | None = None,
 ) -> list[MarkerPose]:
+    detections, _ = detect_markers_with_rejected(
+        color_bgr,
+        intrinsics=intrinsics,
+        marker_size_m=marker_size_m,
+        dictionary_name=dictionary_name,
+        dist_coeffs=dist_coeffs,
+    )
+    return detections
+
+
+def detect_markers_with_rejected(
+    color_bgr: np.ndarray,
+    *,
+    intrinsics: CameraIntrinsics | None = None,
+    marker_size_m: float | None = None,
+    dictionary_name: str = "DICT_4X4_50",
+    dist_coeffs: np.ndarray | None = None,
+) -> tuple[list[MarkerPose], int]:
     import cv2
 
     dictionary = _aruco_dictionary(cv2, dictionary_name)
-    corners, marker_ids = _detect_aruco_markers(cv2, color_bgr, dictionary)
+    corners, marker_ids, rejected = _detect_aruco_markers(cv2, color_bgr, dictionary)
+    rejected_count = 0 if rejected is None else len(rejected)
     if marker_ids is None or len(marker_ids) == 0:
-        return []
+        return [], rejected_count
 
     rvecs = None
     tvecs = None
@@ -65,7 +84,7 @@ def detect_markers(
                 tvec=tvec,
             )
         )
-    return detections
+    return detections, rejected_count
 
 
 def draw_marker_detections(
@@ -119,7 +138,11 @@ def _detect_aruco_markers(cv2, color_bgr: np.ndarray, dictionary):
     detector_factory = getattr(cv2.aruco, "ArucoDetector", None)
     if detector_factory is not None:
         detector = detector_factory(dictionary, parameters)
-        corners, marker_ids, _ = detector.detectMarkers(color_bgr)
-        return corners, marker_ids
-    corners, marker_ids, _ = cv2.aruco.detectMarkers(color_bgr, dictionary, parameters=parameters)
-    return corners, marker_ids
+        corners, marker_ids, rejected = detector.detectMarkers(color_bgr)
+        return corners, marker_ids, rejected
+    corners, marker_ids, rejected = cv2.aruco.detectMarkers(
+        color_bgr,
+        dictionary,
+        parameters=parameters,
+    )
+    return corners, marker_ids, rejected

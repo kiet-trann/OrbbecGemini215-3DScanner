@@ -11,7 +11,11 @@ except ImportError:
 add_src_to_path()
 
 from scanner_app.camera.orbbec_capture import CameraIntrinsics
-from scanner_app.tracking.aruco import camera_matrix_from_intrinsics, detect_markers
+from scanner_app.tracking.aruco import (
+    camera_matrix_from_intrinsics,
+    detect_markers,
+    detect_markers_with_rejected,
+)
 
 
 def make_marker_scene(marker_id: int = 0, marker_size_px: int = 160) -> np.ndarray:
@@ -67,6 +71,15 @@ class ArucoTrackingTests(unittest.TestCase):
         detections = detect_markers(image, intrinsics=intrinsics, marker_size_m=0.06)
 
         self.assertEqual(detections, [])
+
+    def test_detect_markers_with_rejected_reports_invalid_square_candidates(self) -> None:
+        image = np.full((320, 320, 3), 255, dtype=np.uint8)
+        cv2.rectangle(image, (80, 80), (240, 240), (0, 0, 0), thickness=8)
+
+        detections, rejected_count = detect_markers_with_rejected(image)
+
+        self.assertEqual(detections, [])
+        self.assertGreaterEqual(rejected_count, 1)
 
     def test_detect_markers_rejects_unknown_dictionary_names(self) -> None:
         image = make_marker_scene()

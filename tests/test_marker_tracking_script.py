@@ -40,11 +40,13 @@ class MarkerTrackingScriptTests(unittest.TestCase):
             frame_count=24,
             elapsed_seconds=2.0,
             detections=[FakeDetection()],
+            rejected_count=5,
         )
 
         self.assertEqual(
             status,
-            "Marker frames: 24 | 12.0 FPS | markers=1 | id=3 t=(0.010, 0.020, 0.350)m",
+            "Marker frames: 24 | 12.0 FPS | markers=1 | rejected=5 | "
+            "id=3 t=(0.010, 0.020, 0.350)m",
         )
 
     def test_format_tracking_status_handles_no_marker(self) -> None:
@@ -54,9 +56,10 @@ class MarkerTrackingScriptTests(unittest.TestCase):
             frame_count=10,
             elapsed_seconds=0.0,
             detections=[],
+            rejected_count=2,
         )
 
-        self.assertEqual(status, "Marker frames: 10 | 0.0 FPS | markers=0")
+        self.assertEqual(status, "Marker frames: 10 | 0.0 FPS | markers=0 | rejected=2")
 
 
 if __name__ == "__main__":

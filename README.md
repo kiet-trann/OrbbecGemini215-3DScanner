@@ -72,6 +72,17 @@ Chay marker tracking voi ArUco `DICT_4X4_50`, marker vat ly 6 cm:
 python scripts/03_marker_tracking.py --marker-size-m 0.06
 ```
 
+Tao marker PNG dung dictionary dang dung trong prototype:
+
+```powershell
+python scripts/00_generate_aruco_marker.py --dictionary DICT_4X4_50 --id 0 --marker-size-px 800 --border-px 160
+```
+
+File mac dinh duoc tao tai `data/calibration/aruco_DICT_4X4_50_id0_800px.png`.
+Khi test, neu log `markers=0 | rejected=0` thi camera chua thay candidate marker ro rang;
+neu `rejected` tang nhung `markers=0` thi thu tang kich thuoc marker, giu phang, tang anh sang,
+hoac kiem tra dung dictionary `DICT_4X4_50`.
+
 Smoke test khong mo cua so GUI:
 
 ```powershell

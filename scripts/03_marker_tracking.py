@@ -13,7 +13,7 @@ from scanner_app.camera.orbbec_capture import (
     OrbbecFrameError,
     OrbbecSdkNotAvailable,
 )
-from scanner_app.tracking.aruco import detect_markers, draw_marker_detections
+from scanner_app.tracking.aruco import detect_markers_with_rejected, draw_marker_detections
 
 
 WINDOW_NAME = "Gemini 215 ArUco Tracking"
@@ -34,9 +34,17 @@ def build_argument_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def format_tracking_status(frame_count: int, elapsed_seconds: float, detections) -> str:
+def format_tracking_status(
+    frame_count: int,
+    elapsed_seconds: float,
+    detections,
+    rejected_count: int = 0,
+) -> str:
     fps = frame_count / elapsed_seconds if elapsed_seconds > 0 else 0.0
-    status = f"Marker frames: {frame_count} | {fps:.1f} FPS | markers={len(detections)}"
+    status = (
+        f"Marker frames: {frame_count} | {fps:.1f} FPS | "
+        f"markers={len(detections)} | rejected={rejected_count}"
+    )
     if detections:
         detection = detections[0]
         if detection.tvec is not None:
@@ -70,7 +78,7 @@ def main(argv: list[str] | None = None) -> None:
             if frame.color is None:
                 raise OrbbecFrameError("Color frame missing; marker tracking requires RGB.")
 
-            detections = detect_markers(
+            detections, rejected_count = detect_markers_with_rejected(
                 frame.color,
                 intrinsics=intrinsics,
                 marker_size_m=args.marker_size_m,
@@ -80,7 +88,14 @@ def main(argv: list[str] | None = None) -> None:
 
             now = time.monotonic()
             if now - last_status_at >= STATUS_INTERVAL_SECONDS or args.headless:
-                print(format_tracking_status(frame_count, now - started_at, detections))
+                print(
+                    format_tracking_status(
+                        frame_count,
+                        now - started_at,
+                        detections,
+                        rejected_count=rejected_count,
+                    )
+                )
                 last_status_at = now
 
             if not args.headless:
