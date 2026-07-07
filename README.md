@@ -137,6 +137,13 @@ Chi in thong tin file, khong mo cua so GUI:
 python scripts/08_view_ply.py outputs/ply/merged_cloud_20260707_081312.ply --info-only
 ```
 
+Cat bot mat ban/nen va giu cum point cloud lon nhat cua vat:
+
+```powershell
+python scripts/09_crop_ply.py outputs/ply/merged_cloud_20260707_091637.ply
+python scripts/08_view_ply.py outputs/ply/merged_cloud_20260707_091637_cropped.ply
+```
+
 ## Prototype Definition of Done
 
 - Gemini 215 ket noi on dinh.
