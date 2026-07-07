@@ -11,6 +11,7 @@ add_src_to_path()
 
 from scanner_app.camera.orbbec_capture import CameraIntrinsics, RgbdFrame
 from scanner_app.fusion.tsdf import (
+    make_rgbd_image,
     mask_depth_to_world_roi,
     open3d_camera_intrinsic,
     world_to_camera_extrinsic,
@@ -81,6 +82,25 @@ class TsdfFusionTests(unittest.TestCase):
                 ]
             ),
         )
+
+    def test_make_rgbd_image_accepts_bgr_color_frame(self) -> None:
+        color_bgr = np.array(
+            [
+                [[10, 20, 30], [40, 50, 60]],
+                [[70, 80, 90], [100, 110, 120]],
+            ],
+            dtype=np.uint8,
+        )
+        depth_m = np.ones((2, 2), dtype=np.float32)
+
+        rgbd = make_rgbd_image(
+            color_bgr=color_bgr,
+            depth_m=depth_m,
+            depth_trunc_m=2.0,
+        )
+
+        self.assertEqual(np.asarray(rgbd.color).shape, (2, 2, 3))
+        self.assertEqual(np.asarray(rgbd.depth).shape, (2, 2))
 
 
 if __name__ == "__main__":

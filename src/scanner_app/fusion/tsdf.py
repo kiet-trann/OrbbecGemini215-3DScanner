@@ -64,11 +64,12 @@ def make_rgbd_image(
     if color_bgr is None:
         color_rgb = np.zeros((*depth_m.shape, 3), dtype=np.uint8)
     else:
-        color_rgb = color_bgr[:, :, [2, 1, 0]].astype(np.uint8)
+        color_rgb = np.ascontiguousarray(color_bgr[:, :, [2, 1, 0]], dtype=np.uint8)
+    depth_image = np.ascontiguousarray(depth_m, dtype=np.float32)
 
     return o3d.geometry.RGBDImage.create_from_color_and_depth(
         o3d.geometry.Image(color_rgb),
-        o3d.geometry.Image(depth_m.astype(np.float32)),
+        o3d.geometry.Image(depth_image),
         depth_scale=1.0,
         depth_trunc=float(depth_trunc_m),
         convert_rgb_to_intensity=False,
