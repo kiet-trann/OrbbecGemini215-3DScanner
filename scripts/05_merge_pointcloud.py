@@ -5,6 +5,7 @@ import _bootstrap  # noqa: F401
 import argparse
 from datetime import datetime
 from pathlib import Path
+import sys
 import time
 
 from scanner_app.camera.orbbec_capture import (
@@ -37,12 +38,29 @@ def build_argument_parser() -> argparse.ArgumentParser:
     parser.add_argument("--marker-layout", type=Path, default=DEFAULT_MARKER_LAYOUT)
     parser.add_argument("--min-depth-m", type=float, default=0.15)
     parser.add_argument("--max-depth-m", type=float, default=1.50)
-    parser.add_argument("--max-frames", type=int, default=120)
+    parser.add_argument(
+        "--max-frames",
+        type=int,
+        default=120,
+        help="Stop after N total camera frames; ignored with --capture-seconds unless set explicitly.",
+    )
+    parser.add_argument(
+        "--capture-seconds",
+        type=float,
+        default=0.0,
+        help="Stop after this many seconds; 0 disables time-based capture.",
+    )
     parser.add_argument(
         "--target-tracked-frames",
         type=int,
         default=0,
         help="Stop after N frames with valid marker pose; 0 disables this target.",
+    )
+    parser.add_argument(
+        "--tracked-frame-stride",
+        type=int,
+        default=1,
+        help="Merge one out of every N marker-tracked frames; 1 keeps every tracked frame.",
     )
     parser.add_argument(
         "--voxel-size-m",
@@ -85,14 +103,43 @@ def should_stop_capture(
     tracked_frames: int,
     max_frames: int,
     target_tracked_frames: int,
+    elapsed_seconds: float,
+    capture_seconds: float,
 ) -> bool:
     if target_tracked_frames > 0 and tracked_frames >= target_tracked_frames:
+        return True
+    if capture_seconds > 0 and elapsed_seconds >= capture_seconds:
         return True
     return max_frames > 0 and frame_count >= max_frames
 
 
+def should_merge_tracked_frame(*, marker_frame_count: int, stride: int) -> bool:
+    if stride <= 1:
+        return True
+    return (marker_frame_count - 1) % stride == 0
+
+
+def resolve_effective_max_frames(
+    *,
+    max_frames: int,
+    capture_seconds: float,
+    max_frames_supplied: bool,
+) -> int:
+    if capture_seconds > 0 and not max_frames_supplied:
+        return 0
+    return max_frames
+
+
 def main(argv: list[str] | None = None) -> None:
-    args = build_argument_parser().parse_args(argv)
+    raw_argv = sys.argv[1:] if argv is None else argv
+    args = build_argument_parser().parse_args(raw_argv)
+    if args.tracked_frame_stride < 1:
+        raise ValueError("--tracked-frame-stride must be 1 or greater.")
+    effective_max_frames = resolve_effective_max_frames(
+        max_frames=args.max_frames,
+        capture_seconds=args.capture_seconds,
+        max_frames_supplied="--max-frames" in raw_argv,
+    )
     output_path = args.output or build_output_path()
     marker_world_transforms = load_marker_world_transforms(args.marker_layout)
     camera = OrbbecCapture(align_to_depth=True)
@@ -130,30 +177,36 @@ def main(argv: list[str] | None = None) -> None:
                 rejected_count = frame_rejected_count
                 if detections:
                     marker_frames += 1
-                    detection = detections[0]
-                    marker_to_world = marker_world_transforms.get(detection.marker_id)
-                    pose_sample = camera_pose_from_detection(
-                        detection,
-                        timestamp_ms=frame.timestamp_ms,
-                        marker_to_world=marker_to_world,
-                    )
-                    point_cloud = rgbd_frame_to_point_cloud(
-                        frame,
-                        intrinsics,
-                        min_depth_m=args.min_depth_m,
-                        max_depth_m=args.max_depth_m,
-                    )
-                    if len(point_cloud.points_xyz) > 0:
-                        world_cloud = transform_point_cloud(
-                            point_cloud,
-                            pose_sample.camera_to_world,
+                    if should_merge_tracked_frame(
+                        marker_frame_count=marker_frames,
+                        stride=args.tracked_frame_stride,
+                    ):
+                        detection = detections[0]
+                        marker_to_world = marker_world_transforms.get(detection.marker_id)
+                        pose_sample = camera_pose_from_detection(
+                            detection,
+                            timestamp_ms=frame.timestamp_ms,
+                            marker_to_world=marker_to_world,
                         )
-                        transformed_clouds.append(world_cloud)
-                        merged_points += len(world_cloud.points_xyz)
-                        tracked_frames += 1
+                        point_cloud = rgbd_frame_to_point_cloud(
+                            frame,
+                            intrinsics,
+                            min_depth_m=args.min_depth_m,
+                            max_depth_m=args.max_depth_m,
+                        )
+                        if len(point_cloud.points_xyz) > 0:
+                            world_cloud = transform_point_cloud(
+                                point_cloud,
+                                pose_sample.camera_to_world,
+                            )
+                            transformed_clouds.append(world_cloud)
+                            merged_points += len(world_cloud.points_xyz)
+                            tracked_frames += 1
+                        else:
+                            skipped_frames += 1
+                            empty_cloud_frames += 1
                     else:
                         skipped_frames += 1
-                        empty_cloud_frames += 1
                 else:
                     skipped_frames += 1
                     no_marker_frames += 1
@@ -178,8 +231,10 @@ def main(argv: list[str] | None = None) -> None:
             if should_stop_capture(
                 frame_count=frame_count,
                 tracked_frames=tracked_frames,
-                max_frames=args.max_frames,
+                max_frames=effective_max_frames,
                 target_tracked_frames=args.target_tracked_frames,
+                elapsed_seconds=now - started_at,
+                capture_seconds=args.capture_seconds,
             ):
                 break
 

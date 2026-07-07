@@ -69,6 +69,16 @@ class MergePointCloudScriptTests(unittest.TestCase):
 
         self.assertEqual(args.voxel_size_m, 0.003)
 
+    def test_parser_accepts_capture_seconds_and_tracked_frame_stride(self) -> None:
+        module = load_merge_script_module()
+
+        args = module.build_argument_parser().parse_args(
+            ["--capture-seconds", "30", "--tracked-frame-stride", "3"]
+        )
+
+        self.assertEqual(args.capture_seconds, 30.0)
+        self.assertEqual(args.tracked_frame_stride, 3)
+
     def test_should_stop_capture_when_target_tracked_frames_is_reached(self) -> None:
         module = load_merge_script_module()
 
@@ -78,6 +88,8 @@ class MergePointCloudScriptTests(unittest.TestCase):
                 tracked_frames=50,
                 max_frames=0,
                 target_tracked_frames=50,
+                elapsed_seconds=5.0,
+                capture_seconds=0.0,
             )
         )
         self.assertFalse(
@@ -86,6 +98,8 @@ class MergePointCloudScriptTests(unittest.TestCase):
                 tracked_frames=49,
                 max_frames=0,
                 target_tracked_frames=50,
+                elapsed_seconds=5.0,
+                capture_seconds=0.0,
             )
         )
 
@@ -98,7 +112,61 @@ class MergePointCloudScriptTests(unittest.TestCase):
                 tracked_frames=3,
                 max_frames=120,
                 target_tracked_frames=0,
+                elapsed_seconds=5.0,
+                capture_seconds=0.0,
             )
+        )
+
+    def test_should_stop_capture_when_capture_seconds_is_reached(self) -> None:
+        module = load_merge_script_module()
+
+        self.assertTrue(
+            module.should_stop_capture(
+                frame_count=10,
+                tracked_frames=2,
+                max_frames=0,
+                target_tracked_frames=0,
+                elapsed_seconds=30.0,
+                capture_seconds=30.0,
+            )
+        )
+        self.assertFalse(
+            module.should_stop_capture(
+                frame_count=10,
+                tracked_frames=2,
+                max_frames=0,
+                target_tracked_frames=0,
+                elapsed_seconds=29.9,
+                capture_seconds=30.0,
+            )
+        )
+
+    def test_should_merge_tracked_frame_uses_one_based_stride(self) -> None:
+        module = load_merge_script_module()
+
+        self.assertTrue(module.should_merge_tracked_frame(marker_frame_count=1, stride=3))
+        self.assertFalse(module.should_merge_tracked_frame(marker_frame_count=2, stride=3))
+        self.assertFalse(module.should_merge_tracked_frame(marker_frame_count=3, stride=3))
+        self.assertTrue(module.should_merge_tracked_frame(marker_frame_count=4, stride=3))
+
+    def test_resolve_effective_max_frames_ignores_default_when_timed_capture_is_used(self) -> None:
+        module = load_merge_script_module()
+
+        self.assertEqual(
+            module.resolve_effective_max_frames(
+                max_frames=120,
+                capture_seconds=30.0,
+                max_frames_supplied=False,
+            ),
+            0,
+        )
+        self.assertEqual(
+            module.resolve_effective_max_frames(
+                max_frames=500,
+                capture_seconds=30.0,
+                max_frames_supplied=True,
+            ),
+            500,
         )
 
 
