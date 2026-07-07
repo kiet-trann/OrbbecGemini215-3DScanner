@@ -119,6 +119,12 @@ Scan theo thoi gian that va chi lay moi N frame tracked de co du thoi gian di qu
 python scripts/05_merge_pointcloud.py --marker-size-m 0.06 --capture-seconds 30 --tracked-frame-stride 3 --min-depth-m 0.15 --max-depth-m 0.80 --voxel-size-m 0.002
 ```
 
+Mo preview RGB trong luc merge de biet marker va vat co nam trong khung hinh khong:
+
+```powershell
+python scripts/05_merge_pointcloud.py --marker-size-m 0.06 --capture-seconds 30 --tracked-frame-stride 3 --preview --min-depth-m 0.15 --max-depth-m 0.80 --voxel-size-m 0.002
+```
+
 Mo lai file PLY da scan bang Open3D, thay cho Windows 3D Viewer:
 
 ```powershell

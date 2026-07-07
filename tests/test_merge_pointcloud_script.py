@@ -79,6 +79,31 @@ class MergePointCloudScriptTests(unittest.TestCase):
         self.assertEqual(args.capture_seconds, 30.0)
         self.assertEqual(args.tracked_frame_stride, 3)
 
+    def test_parser_accepts_preview(self) -> None:
+        module = load_merge_script_module()
+
+        args = module.build_argument_parser().parse_args(["--preview"])
+
+        self.assertTrue(args.preview)
+
+    def test_format_preview_overlay_reports_marker_and_merge_state(self) -> None:
+        module = load_merge_script_module()
+
+        overlay = module.format_preview_overlay(
+            elapsed_seconds=12.3,
+            capture_seconds=30.0,
+            marker_count=1,
+            rejected_count=4,
+            tracked_frames=7,
+            skipped_frames=2,
+            merged_points=123456,
+        )
+
+        self.assertEqual(
+            overlay,
+            "12.3/30.0s | markers=1 rejected=4 | merged=7 skipped=2 | points=123456",
+        )
+
     def test_should_stop_capture_when_target_tracked_frames_is_reached(self) -> None:
         module = load_merge_script_module()
 
