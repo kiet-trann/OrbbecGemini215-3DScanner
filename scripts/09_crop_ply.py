@@ -35,9 +35,9 @@ def build_argument_parser() -> argparse.ArgumentParser:
     parser.add_argument("--plane-ransac-n", type=int, default=3)
     parser.add_argument("--plane-iterations", type=int, default=1000)
     parser.add_argument(
-        "--no-cluster",
+        "--keep-largest-cluster",
         action="store_true",
-        help="Do not keep only the largest DBSCAN cluster.",
+        help="After plane removal, keep only the largest DBSCAN cluster.",
     )
     parser.add_argument("--cluster-eps-m", type=float, default=0.03)
     parser.add_argument("--cluster-min-points", type=int, default=30)
@@ -101,7 +101,7 @@ def main(argv: list[str] | None = None) -> None:
             f"{describe_point_cloud(cloud)}"
         )
 
-    if not args.no_cluster:
+    if args.keep_largest_cluster:
         cloud, cluster_count = keep_largest_cluster(
             cloud,
             eps=args.cluster_eps_m,

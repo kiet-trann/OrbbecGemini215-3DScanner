@@ -37,6 +37,16 @@ class CropPlyScriptTests(unittest.TestCase):
         self.assertEqual(args.plane_distance_threshold_m, 0.008)
         self.assertEqual(args.cluster_eps_m, 0.03)
         self.assertEqual(args.cluster_min_points, 25)
+        self.assertFalse(args.keep_largest_cluster)
+
+    def test_build_argument_parser_accepts_keep_largest_cluster(self) -> None:
+        script = load_crop_ply_script()
+
+        args = script.build_argument_parser().parse_args(
+            ["outputs/ply/scan.ply", "--keep-largest-cluster"]
+        )
+
+        self.assertTrue(args.keep_largest_cluster)
 
     def test_build_output_path_adds_cropped_suffix_in_ply_directory(self) -> None:
         script = load_crop_ply_script()
