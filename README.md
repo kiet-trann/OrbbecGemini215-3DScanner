@@ -132,6 +132,12 @@ Dat marker co dinh canh vat, mo preview, roi chinh cac moc `roi-*` sao cho hop 3
 python scripts/05_merge_pointcloud.py --marker-size-m 0.06 --capture-seconds 35 --tracked-frame-stride 4 --preview --min-depth-m 0.15 --max-depth-m 0.70 --voxel-size-m 0.0015 --roi-min-x -0.20 --roi-max-x 0.04 --roi-min-y -0.15 --roi-max-y 0.12 --roi-min-z 0.01 --roi-max-z 0.16
 ```
 
+Neu point cloud bi tach lop, dung TSDF fusion de tao mesh lien be mat hon thay vi chong cac point cloud tho:
+
+```powershell
+python scripts/06_tsdf_fusion.py --marker-size-m 0.06 --capture-seconds 45 --tracked-frame-stride 5 --preview --min-depth-m 0.15 --max-depth-m 0.70 --voxel-length-m 0.002 --sdf-trunc-m 0.010 --roi-min-x -0.28 --roi-max-x 0.08 --roi-min-y -0.18 --roi-max-y 0.16 --roi-min-z 0.015 --roi-max-z 0.14
+```
+
 Mo lai file PLY da scan bang Open3D, thay cho Windows 3D Viewer:
 
 ```powershell
