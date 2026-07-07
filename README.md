@@ -144,6 +144,13 @@ python scripts/09_crop_ply.py outputs/ply/merged_cloud_20260707_091637.ply
 python scripts/08_view_ply.py outputs/ply/merged_cloud_20260707_091637_cropped.ply
 ```
 
+Dung point cloud da crop de thu dung mesh va xuat OBJ/STL/PLY:
+
+```powershell
+python scripts/10_reconstruct_mesh.py outputs/ply/earbud_case_tight_crop.ply --output outputs/obj/earbud_case.obj
+python scripts/10_reconstruct_mesh.py outputs/ply/earbud_case_tight_crop.ply --output outputs/stl/earbud_case.stl
+```
+
 ## Prototype Definition of Done
 
 - Gemini 215 ket noi on dinh.
