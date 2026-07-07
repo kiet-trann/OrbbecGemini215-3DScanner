@@ -113,6 +113,18 @@ Giam dung luong PLY bang voxel downsample truoc khi ghi file:
 python scripts/05_merge_pointcloud.py --marker-size-m 0.06 --target-tracked-frames 50 --max-frames 1000 --voxel-size-m 0.003
 ```
 
+Mo lai file PLY da scan bang Open3D, thay cho Windows 3D Viewer:
+
+```powershell
+python scripts/08_view_ply.py outputs/ply/merged_cloud_20260707_081312.ply
+```
+
+Chi in thong tin file, khong mo cua so GUI:
+
+```powershell
+python scripts/08_view_ply.py outputs/ply/merged_cloud_20260707_081312.ply --info-only
+```
+
 ## Prototype Definition of Done
 
 - Gemini 215 ket noi on dinh.
