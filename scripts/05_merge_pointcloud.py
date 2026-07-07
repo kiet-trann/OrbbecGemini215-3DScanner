@@ -8,6 +8,8 @@ from pathlib import Path
 import sys
 import time
 
+import numpy as np
+
 from scanner_app.camera.orbbec_capture import (
     OrbbecCameraError,
     OrbbecCapture,
@@ -16,6 +18,7 @@ from scanner_app.camera.orbbec_capture import (
 )
 from scanner_app.export.ply import write_point_cloud_ply
 from scanner_app.fusion.merge import (
+    crop_point_cloud_bounds,
     merge_point_clouds,
     transform_point_cloud,
     voxel_downsample_point_cloud,
@@ -75,6 +78,12 @@ def build_argument_parser() -> argparse.ArgumentParser:
         default=0.0,
         help="Downsample merged cloud with this voxel size in meters; 0 disables downsampling.",
     )
+    parser.add_argument("--roi-min-x", type=float, default=None)
+    parser.add_argument("--roi-max-x", type=float, default=None)
+    parser.add_argument("--roi-min-y", type=float, default=None)
+    parser.add_argument("--roi-max-y", type=float, default=None)
+    parser.add_argument("--roi-min-z", type=float, default=None)
+    parser.add_argument("--roi-max-z", type=float, default=None)
     parser.add_argument("--output", type=Path, default=None)
     return parser
 
@@ -156,6 +165,47 @@ def resolve_effective_max_frames(
     return max_frames
 
 
+def build_roi_bounds(args: argparse.Namespace) -> tuple[np.ndarray, np.ndarray]:
+    return (
+        np.array(
+            [
+                -np.inf if args.roi_min_x is None else args.roi_min_x,
+                -np.inf if args.roi_min_y is None else args.roi_min_y,
+                -np.inf if args.roi_min_z is None else args.roi_min_z,
+            ],
+            dtype=np.float32,
+        ),
+        np.array(
+            [
+                np.inf if args.roi_max_x is None else args.roi_max_x,
+                np.inf if args.roi_max_y is None else args.roi_max_y,
+                np.inf if args.roi_max_z is None else args.roi_max_z,
+            ],
+            dtype=np.float32,
+        ),
+    )
+
+
+def has_roi_bounds(args: argparse.Namespace) -> bool:
+    return any(
+        value is not None
+        for value in (
+            args.roi_min_x,
+            args.roi_max_x,
+            args.roi_min_y,
+            args.roi_max_y,
+            args.roi_min_z,
+            args.roi_max_z,
+        )
+    )
+
+
+def validate_roi_bounds(min_bound: np.ndarray, max_bound: np.ndarray) -> None:
+    for axis_name, min_value, max_value in zip(("x", "y", "z"), min_bound, max_bound):
+        if np.isfinite(min_value) and np.isfinite(max_value) and min_value >= max_value:
+            raise ValueError(f"ROI min {axis_name} must be smaller than ROI max {axis_name}.")
+
+
 def main(argv: list[str] | None = None) -> None:
     raw_argv = sys.argv[1:] if argv is None else argv
     args = build_argument_parser().parse_args(raw_argv)
@@ -166,6 +216,9 @@ def main(argv: list[str] | None = None) -> None:
         capture_seconds=args.capture_seconds,
         max_frames_supplied="--max-frames" in raw_argv,
     )
+    roi_enabled = has_roi_bounds(args)
+    roi_min_bound, roi_max_bound = build_roi_bounds(args)
+    validate_roi_bounds(roi_min_bound, roi_max_bound)
     output_path = args.output or build_output_path()
     marker_world_transforms = load_marker_world_transforms(args.marker_layout)
     camera = OrbbecCapture(align_to_depth=True)
@@ -182,6 +235,12 @@ def main(argv: list[str] | None = None) -> None:
         camera.start()
         intrinsics = camera.intrinsics()
         print(f"Point cloud merge started. Writing merged PLY to: {output_path}")
+        if roi_enabled:
+            print(
+                "Marker/world ROI enabled: "
+                f"min={tuple(float(value) for value in roi_min_bound)} "
+                f"max={tuple(float(value) for value in roi_max_bound)}"
+            )
         if args.preview:
             print("Merge preview started. Keep marker and object in view. Press Q or ESC to stop.")
 
@@ -235,9 +294,19 @@ def main(argv: list[str] | None = None) -> None:
                                 point_cloud,
                                 pose_sample.camera_to_world,
                             )
-                            transformed_clouds.append(world_cloud)
-                            merged_points += len(world_cloud.points_xyz)
-                            tracked_frames += 1
+                            if roi_enabled:
+                                world_cloud = crop_point_cloud_bounds(
+                                    world_cloud,
+                                    min_bound=roi_min_bound,
+                                    max_bound=roi_max_bound,
+                                )
+                            if len(world_cloud.points_xyz) > 0:
+                                transformed_clouds.append(world_cloud)
+                                merged_points += len(world_cloud.points_xyz)
+                                tracked_frames += 1
+                            else:
+                                skipped_frames += 1
+                                empty_cloud_frames += 1
                         else:
                             skipped_frames += 1
                             empty_cloud_frames += 1

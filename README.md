@@ -125,6 +125,13 @@ Mo preview RGB trong luc merge de biet marker va vat co nam trong khung hinh kho
 python scripts/05_merge_pointcloud.py --marker-size-m 0.06 --capture-seconds 30 --tracked-frame-stride 3 --preview --min-depth-m 0.15 --max-depth-m 0.80 --voxel-size-m 0.002
 ```
 
+Voi vat nho nhu vo tai nghe, nen scan trong mot ROI theo he toa do marker de tranh ghep ca mat ban.
+Dat marker co dinh canh vat, mo preview, roi chinh cac moc `roi-*` sao cho hop 3D bao quanh vat:
+
+```powershell
+python scripts/05_merge_pointcloud.py --marker-size-m 0.06 --capture-seconds 35 --tracked-frame-stride 4 --preview --min-depth-m 0.15 --max-depth-m 0.70 --voxel-size-m 0.0015 --roi-min-x -0.20 --roi-max-x 0.04 --roi-min-y -0.15 --roi-max-y 0.12 --roi-min-z 0.01 --roi-max-z 0.16
+```
+
 Mo lai file PLY da scan bang Open3D, thay cho Windows 3D Viewer:
 
 ```powershell

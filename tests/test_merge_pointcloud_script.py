@@ -86,6 +86,50 @@ class MergePointCloudScriptTests(unittest.TestCase):
 
         self.assertTrue(args.preview)
 
+    def test_parser_accepts_marker_relative_roi_bounds(self) -> None:
+        module = load_merge_script_module()
+
+        args = module.build_argument_parser().parse_args(
+            [
+                "--roi-min-x",
+                "-0.20",
+                "--roi-max-x",
+                "0.02",
+                "--roi-min-y",
+                "-0.12",
+                "--roi-max-y",
+                "0.10",
+                "--roi-min-z",
+                "0.01",
+                "--roi-max-z",
+                "0.12",
+            ]
+        )
+
+        self.assertEqual(args.roi_min_x, -0.20)
+        self.assertEqual(args.roi_max_x, 0.02)
+        self.assertEqual(args.roi_min_y, -0.12)
+        self.assertEqual(args.roi_max_y, 0.10)
+        self.assertEqual(args.roi_min_z, 0.01)
+        self.assertEqual(args.roi_max_z, 0.12)
+
+    def test_build_roi_bounds_uses_unbounded_axes_when_values_are_missing(self) -> None:
+        module = load_merge_script_module()
+        args = module.build_argument_parser().parse_args(["--roi-max-x", "0.0"])
+
+        min_bound, max_bound = module.build_roi_bounds(args)
+
+        self.assertEqual(min_bound.tolist(), [-float("inf"), -float("inf"), -float("inf")])
+        self.assertEqual(max_bound.tolist(), [0.0, float("inf"), float("inf")])
+
+    def test_validate_roi_bounds_rejects_inverted_finite_axis(self) -> None:
+        module = load_merge_script_module()
+        args = module.build_argument_parser().parse_args(["--roi-min-x", "0.10", "--roi-max-x", "0.0"])
+        min_bound, max_bound = module.build_roi_bounds(args)
+
+        with self.assertRaisesRegex(ValueError, "ROI min x must be smaller than ROI max x"):
+            module.validate_roi_bounds(min_bound, max_bound)
+
     def test_format_preview_overlay_reports_marker_and_merge_state(self) -> None:
         module = load_merge_script_module()
 

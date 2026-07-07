@@ -10,6 +10,7 @@ except ImportError:
 add_src_to_path()
 
 from scanner_app.fusion.merge import (
+    crop_point_cloud_bounds,
     merge_point_clouds,
     transform_point_cloud,
     transform_points,
@@ -76,6 +77,60 @@ class PointCloudMergeTests(unittest.TestCase):
 
         self.assertIsNone(merged.colors_rgb)
         self.assertEqual(len(merged.points_xyz), 2)
+
+    def test_crop_point_cloud_bounds_keeps_points_inside_roi_and_preserves_colors(self) -> None:
+        point_cloud = PointCloudData(
+            points_xyz=np.array(
+                [
+                    [-0.20, 0.00, 0.02],
+                    [-0.08, 0.04, 0.03],
+                    [0.10, 0.00, 0.02],
+                ],
+                dtype=np.float32,
+            ),
+            colors_rgb=np.array(
+                [
+                    [1.0, 0.0, 0.0],
+                    [0.0, 1.0, 0.0],
+                    [0.0, 0.0, 1.0],
+                ],
+                dtype=np.float32,
+            ),
+        )
+
+        cropped = crop_point_cloud_bounds(
+            point_cloud,
+            min_bound=np.array([-0.12, -0.05, 0.00], dtype=np.float32),
+            max_bound=np.array([0.02, 0.08, 0.05], dtype=np.float32),
+        )
+
+        np.testing.assert_array_equal(
+            cropped.points_xyz,
+            np.array([[-0.08, 0.04, 0.03]], dtype=np.float32),
+        )
+        np.testing.assert_array_equal(
+            cropped.colors_rgb,
+            np.array([[0.0, 1.0, 0.0]], dtype=np.float32),
+        )
+
+    def test_crop_point_cloud_bounds_keeps_unbounded_axes(self) -> None:
+        point_cloud = PointCloudData(
+            points_xyz=np.array(
+                [[-0.10, 0.00, 0.00], [0.05, 0.00, 0.00]],
+                dtype=np.float32,
+            )
+        )
+
+        cropped = crop_point_cloud_bounds(
+            point_cloud,
+            min_bound=np.array([-np.inf, -np.inf, -np.inf], dtype=np.float32),
+            max_bound=np.array([0.00, np.inf, np.inf], dtype=np.float32),
+        )
+
+        np.testing.assert_array_equal(
+            cropped.points_xyz,
+            np.array([[-0.10, 0.00, 0.00]], dtype=np.float32),
+        )
 
     def test_voxel_downsample_point_cloud_reduces_nearby_points_and_preserves_color(self) -> None:
         point_cloud = PointCloudData(

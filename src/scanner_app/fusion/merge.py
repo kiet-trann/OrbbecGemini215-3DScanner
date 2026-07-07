@@ -37,6 +37,26 @@ def merge_point_clouds(point_clouds: list[PointCloudData]) -> PointCloudData:
     return PointCloudData(points_xyz=points_xyz, colors_rgb=colors_rgb)
 
 
+def crop_point_cloud_bounds(
+    point_cloud: PointCloudData,
+    *,
+    min_bound: np.ndarray,
+    max_bound: np.ndarray,
+) -> PointCloudData:
+    if len(point_cloud.points_xyz) == 0:
+        return point_cloud
+
+    points = point_cloud.points_xyz
+    min_bound = np.asarray(min_bound, dtype=np.float32)
+    max_bound = np.asarray(max_bound, dtype=np.float32)
+    mask = np.all((points >= min_bound) & (points <= max_bound), axis=1)
+
+    colors_rgb = None
+    if point_cloud.colors_rgb is not None:
+        colors_rgb = point_cloud.colors_rgb[mask]
+    return PointCloudData(points_xyz=points[mask], colors_rgb=colors_rgb)
+
+
 def voxel_downsample_point_cloud(
     point_cloud: PointCloudData,
     voxel_size_m: float,
