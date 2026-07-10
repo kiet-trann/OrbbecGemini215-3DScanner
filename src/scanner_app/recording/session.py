@@ -54,13 +54,28 @@ class SessionRecorder:
 
     def close(self) -> None:
         if self._closed:
+            self._raise_worker_error()
             return
 
         self._closed = True
-        self._queue.put(_SENTINEL)
-        self._worker.join()
+        self._raise_worker_error()
 
+        while True:
+            try:
+                self._queue.put(_SENTINEL, timeout=0.1)
+                break
+            except Full as exc:
+                self._raise_worker_error()
+                if not self._worker.is_alive():
+                    raise SessionRecordingError("Recorder worker stopped") from exc
+
+        self._worker.join()
+        self._raise_worker_error()
+
+    def _raise_worker_error(self) -> None:
         if self._worker_error is not None:
+            if isinstance(self._worker_error, SessionRecordingError):
+                raise self._worker_error
             raise SessionRecordingError("Recorder worker failed") from self._worker_error
 
     def _run(self) -> None:
@@ -77,8 +92,12 @@ class SessionRecorder:
                 self._queue.task_done()
 
     def _write_packet(self, packet: SynchronizedFramePacket) -> None:
+        path = self.root / f"packet_{packet.sequence:08d}.npz"
+        if path.exists():
+            raise SessionRecordingError(f"Packet output already exists: {path.name}")
+
         np.savez_compressed(
-            self.root / f"packet_{packet.sequence:08d}.npz",
+            path,
             color_bgr=packet.color_bgr,
             depth_raw=packet.depth_raw,
             depth_scale_mm=np.asarray(packet.depth_scale_mm, dtype=np.float64),
