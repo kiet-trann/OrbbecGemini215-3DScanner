@@ -12,6 +12,7 @@ except ImportError:
 
 add_src_to_path()
 
+from scanner_app.camera.models import CaptureConfig
 from scanner_app.camera.orbbec_capture import CameraIntrinsics, OrbbecCameraError, OrbbecCapture
 
 
@@ -69,18 +70,34 @@ class FakeCameraParam:
 
 
 class FakePipeline:
-    def __init__(self) -> None:
+    def __init__(
+        self,
+        depth_profiles: "FakeVideoProfileList | None" = None,
+        color_profiles: "FakeVideoProfileList | None" = None,
+    ) -> None:
         self.started = False
         self.stopped = False
+        self.frame_sync_enabled = False
         self.wait_timeout_ms = None
         self.start_config = None
+        self.device = FakeDevice()
+        self.depth_profiles = depth_profiles or FakeVideoProfileList("depth-profile")
+        self.color_profiles = color_profiles or FakeVideoProfileList("color-profile")
 
     def start(self, config=None) -> None:
         self.started = True
         self.start_config = config
 
     def get_stream_profile_list(self, sensor_type: str) -> "FakeVideoProfileList":
-        return FakeVideoProfileList(f"{sensor_type}-profile")
+        if sensor_type == "depth":
+            return self.depth_profiles
+        return self.color_profiles
+
+    def get_device(self) -> "FakeDevice":
+        return self.device
+
+    def enable_frame_sync(self) -> None:
+        self.frame_sync_enabled = True
 
     def wait_for_frames(self, timeout_ms: int) -> FakeFrameSet:
         self.wait_timeout_ms = timeout_ms
@@ -105,10 +122,13 @@ class FakeSdk:
         DEPTH_STREAM = "depth-stream"
 
     class OBFormat:
+        Y16 = "y16"
         RGB = "rgb"
 
     def __init__(self) -> None:
-        self.pipeline = FakePipeline()
+        self.depth_profiles = FakeVideoProfileList("depth-profile")
+        self.color_profiles = FakeVideoProfileList("color-profile")
+        self.pipeline = FakePipeline(self.depth_profiles, self.color_profiles)
         self.config = FakeConfig()
         self.align_filter = None
 
@@ -136,12 +156,90 @@ class FakeAlignFilter:
 class FakeVideoProfileList:
     def __init__(self, profile) -> None:
         self.profile = profile
+        self.requests = []
 
     def get_default_video_stream_profile(self):
         return self.profile
 
     def get_video_stream_profile(self, width, height, frame_format, fps):
+        self.requests.append((width, height, frame_format, fps))
         return f"{self.profile}-rgb" if frame_format == "rgb" else self.profile
+
+
+class FakeDepthWorkMode:
+    def __init__(self, name: str) -> None:
+        self.name = name
+
+
+class FakeDepthWorkModeList:
+    def __init__(self) -> None:
+        self.modes = (
+            FakeDepthWorkMode("Default Mode"),
+            FakeDepthWorkMode("Close_Up Precision Mode"),
+        )
+
+    def get_count(self) -> int:
+        return len(self.modes)
+
+    def get_depth_work_mode_by_index(self, index: int) -> FakeDepthWorkMode:
+        return self.modes[index]
+
+
+class FakeDepthFilter:
+    def __init__(self, name: str, enabled: bool) -> None:
+        self.name = name
+        self.enabled = enabled
+        self.processed_frame = None
+
+    def is_enabled(self) -> bool:
+        return self.enabled
+
+    def get_name(self) -> str:
+        return self.name
+
+    def process(self, depth_frame):
+        self.processed_frame = depth_frame
+        return FakeFilteredDepthFrame(depth_frame)
+
+
+class FakeFilteredDepthFrame:
+    def __init__(self, depth_frame) -> None:
+        self.depth_frame = depth_frame
+
+    def as_depth_frame(self):
+        return self.depth_frame
+
+
+class FakeDepthSensor:
+    def __init__(self) -> None:
+        self.filters = (
+            FakeDepthFilter("TemporalFilter", True),
+            FakeDepthFilter("DisabledFilter", False),
+        )
+
+    def get_recommended_filters(self):
+        return self.filters
+
+
+class FakeDevice:
+    def __init__(self) -> None:
+        self.depth_modes = FakeDepthWorkModeList()
+        self.selected_depth_mode = "Default Mode"
+        self.depth_sensor = FakeDepthSensor()
+
+    def get_depth_work_mode_list(self) -> FakeDepthWorkModeList:
+        return self.depth_modes
+
+    def get_depth_work_mode(self) -> FakeDepthWorkMode:
+        return FakeDepthWorkMode(self.selected_depth_mode)
+
+    def set_depth_work_mode(self, mode: FakeDepthWorkMode) -> None:
+        self.selected_depth_mode = mode.name
+
+    def get_sensor(self, sensor_type: str) -> FakeDepthSensor:
+        if sensor_type != "depth":
+            raise AssertionError(f"Unexpected sensor requested: {sensor_type}")
+        return self.depth_sensor
 
 
 class FakeConfig:
@@ -190,6 +288,18 @@ class NoDeviceSdk:
 
 
 class OrbbecCaptureTests(unittest.TestCase):
+    def test_start_uses_explicit_30_fps_rgbd_profiles_and_enables_sync(self) -> None:
+        sdk = FakeSdk()
+        capture = OrbbecCapture(sdk_module=sdk, capture_config=CaptureConfig())
+
+        capture.start()
+
+        self.assertTrue(sdk.pipeline.frame_sync_enabled)
+        self.assertIn((1280, 800, "y16", 30), sdk.depth_profiles.requests)
+        self.assertIn((1280, 720, "rgb", 30), sdk.color_profiles.requests)
+        self.assertEqual(sdk.pipeline.device.selected_depth_mode, "Close_Up Precision Mode")
+        self.assertEqual(capture.enabled_depth_filter_names, ("TemporalFilter",))
+
     def test_start_configures_depth_stream_before_starting_pipeline(self) -> None:
         sdk = FakeSdk()
 
@@ -234,6 +344,8 @@ class OrbbecCaptureTests(unittest.TestCase):
         self.assertTrue(sdk.pipeline.started)
         self.assertTrue(sdk.pipeline.stopped)
         self.assertEqual(sdk.pipeline.wait_timeout_ms, 123)
+        self.assertIsNotNone(sdk.pipeline.device.depth_sensor.filters[0].processed_frame)
+        self.assertIsNone(sdk.pipeline.device.depth_sensor.filters[1].processed_frame)
         np.testing.assert_array_equal(frame.color, np.arange(12, dtype=np.uint8).reshape(2, 2, 3))
         np.testing.assert_array_equal(
             frame.depth,
