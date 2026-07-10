@@ -4,7 +4,6 @@ The implementation will wrap pyorbbecsdk2 and expose a small stable interface
 for the rest of the prototype.
 """
 
-from dataclasses import dataclass
 from importlib import import_module
 import os
 from pathlib import Path
@@ -12,27 +11,12 @@ from typing import Any
 
 import numpy as np
 
-
-@dataclass(frozen=True)
-class CameraIntrinsics:
-    fx: float
-    fy: float
-    cx: float
-    cy: float
-    width: int
-    height: int
-
-
-@dataclass(frozen=True)
-class RgbdFrame:
-    color: np.ndarray | None
-    depth: np.ndarray
-    depth_scale: float
-    timestamp_ms: float
-
-    @property
-    def depth_mm(self) -> np.ndarray:
-        return self.depth.astype(np.float32) * float(self.depth_scale)
+from scanner_app.camera.models import (
+    CameraIntrinsics,
+    CaptureConfig,
+    RgbdFrame,
+    SynchronizedFramePacket,
+)
 
 
 class OrbbecSdkNotAvailable(RuntimeError):
