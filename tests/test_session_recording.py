@@ -25,9 +25,43 @@ def _packet(
     )
 
 
+def _metadata() -> dict[str, object]:
+    return {
+        "capture_config": {"depth_width": 1280, "depth_height": 800},
+        "calibration": {"depth_intrinsics": [1.0, 2.0, 3.0, 4.0]},
+        "device_name": "Orbbec Gemini 215",
+        "serial": "ABC123",
+        "sdk_version": "1.2.3",
+        "firmware": "4.5.6",
+    }
+
+
+def test_recorder_requires_metadata(tmp_path) -> None:
+    with pytest.raises(
+        SessionRecordingError,
+        match=(
+            "metadata fields: capture_config, calibration, device_name, serial, "
+            "sdk_version, firmware"
+        ),
+    ):
+        SessionRecorder(tmp_path)
+
+
+def test_recorder_rejects_metadata_missing_required_keys(tmp_path) -> None:
+    metadata = _metadata()
+    del metadata["calibration"]
+    del metadata["firmware"]
+
+    with pytest.raises(
+        SessionRecordingError,
+        match="metadata fields: calibration, firmware",
+    ):
+        SessionRecorder(tmp_path, metadata=metadata)
+
+
 def test_recorded_packet_replays_without_numeric_loss(tmp_path) -> None:
     packet = _packet()
-    recorder = SessionRecorder(tmp_path)
+    recorder = SessionRecorder(tmp_path, metadata=_metadata())
     recorder.submit(packet)
     recorder.close()
 
@@ -43,23 +77,12 @@ def test_recorded_packet_replays_without_numeric_loss(tmp_path) -> None:
 
 
 def test_recorder_writes_metadata_file(tmp_path) -> None:
-    metadata = {
-        "device_name": "Orbbec Gemini 215",
-        "serial_number": "ABC123",
-        "capture_config": {"depth_width": 1280, "depth_height": 800},
-    }
+    metadata = _metadata()
 
     recorder = SessionRecorder(tmp_path, metadata=metadata)
     recorder.close()
 
     assert json.loads((tmp_path / "metadata.json").read_text(encoding="utf-8")) == metadata
-
-
-def test_recorder_writes_empty_metadata_when_none(tmp_path) -> None:
-    recorder = SessionRecorder(tmp_path)
-    recorder.close()
-
-    assert json.loads((tmp_path / "metadata.json").read_text(encoding="utf-8")) == {}
 
 
 def test_replay_restores_imu_samples(tmp_path) -> None:
@@ -68,7 +91,7 @@ def test_replay_restores_imu_samples(tmp_path) -> None:
         ImuSample("accel", 102, np.array([1.0, 2.0, 3.0], dtype=np.float64)),
     )
     packet = _packet(sequence=7, imu_samples=imu_samples)
-    recorder = SessionRecorder(tmp_path)
+    recorder = SessionRecorder(tmp_path, metadata=_metadata())
     recorder.submit(packet)
     recorder.close()
 
@@ -82,7 +105,7 @@ def test_replay_restores_imu_samples(tmp_path) -> None:
 
 
 def test_submit_raises_recording_error_when_queue_is_full(tmp_path, monkeypatch) -> None:
-    recorder = SessionRecorder(tmp_path, queue_size=1)
+    recorder = SessionRecorder(tmp_path, metadata=_metadata(), queue_size=1)
 
     def raise_full(_packet: SynchronizedFramePacket) -> None:
         raise Full
@@ -96,7 +119,7 @@ def test_submit_raises_recording_error_when_queue_is_full(tmp_path, monkeypatch)
 
 
 def test_duplicate_packet_sequence_raises_recording_error(tmp_path) -> None:
-    recorder = SessionRecorder(tmp_path)
+    recorder = SessionRecorder(tmp_path, metadata=_metadata())
     recorder.submit(_packet(sequence=11))
     recorder.submit(_packet(sequence=11))
 
@@ -139,7 +162,7 @@ def test_close_does_not_block_when_worker_failed_and_queue_is_full(tmp_path) -> 
 
 
 def test_close_is_idempotent_and_submit_after_close_errors(tmp_path) -> None:
-    recorder = SessionRecorder(tmp_path)
+    recorder = SessionRecorder(tmp_path, metadata=_metadata())
     recorder.close()
     recorder.close()
 

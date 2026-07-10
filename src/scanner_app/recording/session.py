@@ -12,6 +12,14 @@ from scanner_app.camera.models import ImuSample, SynchronizedFramePacket
 
 
 _SENTINEL = object()
+_REQUIRED_METADATA_FIELDS = (
+    "capture_config",
+    "calibration",
+    "device_name",
+    "serial",
+    "sdk_version",
+    "firmware",
+)
 
 
 class SessionRecordingError(RuntimeError):
@@ -32,7 +40,7 @@ class SessionRecorder:
         self._worker_error: BaseException | None = None
         self._closed = False
 
-        metadata_payload = metadata if metadata is not None else {}
+        metadata_payload = _validate_metadata(metadata)
         (self.root / "metadata.json").write_text(
             json.dumps(metadata_payload, indent=2, sort_keys=True) + "\n",
             encoding="utf-8",
@@ -154,4 +162,21 @@ def _copy_packet(packet: SynchronizedFramePacket) -> SynchronizedFramePacket:
             for sample in packet.imu_samples
         ),
         sequence=int(packet.sequence),
+    )
+
+
+def _validate_metadata(metadata: dict[str, Any] | None) -> dict[str, Any]:
+    if metadata is None:
+        _raise_missing_metadata_fields(_REQUIRED_METADATA_FIELDS)
+
+    missing_fields = tuple(field for field in _REQUIRED_METADATA_FIELDS if field not in metadata)
+    if missing_fields:
+        _raise_missing_metadata_fields(missing_fields)
+
+    return metadata
+
+
+def _raise_missing_metadata_fields(fields: tuple[str, ...]) -> None:
+    raise SessionRecordingError(
+        "Session metadata is missing required metadata fields: " + ", ".join(fields)
     )
