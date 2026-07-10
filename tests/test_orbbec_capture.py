@@ -1,6 +1,7 @@
 import unittest
 from pathlib import Path
 import tempfile
+from typing import Any
 from unittest.mock import patch
 
 import numpy as np
@@ -22,8 +23,9 @@ from scanner_app.camera.orbbec_capture import (
 
 
 class FakeDepthFrame:
-    def __init__(self) -> None:
+    def __init__(self, timestamp_ms: float = 20.0) -> None:
         self.data = np.array([[100, 200], [0, 300]], dtype=np.uint16)
+        self.timestamp_ms = timestamp_ms
 
     def get_width(self) -> int:
         return 2
@@ -37,10 +39,14 @@ class FakeDepthFrame:
     def get_data(self) -> bytes:
         return self.data.tobytes()
 
+    def get_timestamp(self) -> float:
+        return self.timestamp_ms
+
 
 class FakeColorFrame:
-    def __init__(self) -> None:
+    def __init__(self, timestamp_us: int = 19_990) -> None:
         self.data = np.arange(12, dtype=np.uint8).reshape(2, 2, 3)
+        self.timestamp_us = timestamp_us
 
     def get_width(self) -> int:
         return 2
@@ -48,14 +54,24 @@ class FakeColorFrame:
     def get_height(self) -> int:
         return 2
 
+    def get_timestamp_us(self) -> int:
+        return self.timestamp_us
+
+
+_DEFAULT_COLOR_FRAME = object()
+
 
 class FakeFrameSet:
-    def __init__(self) -> None:
-        self.color_frame = FakeColorFrame()
-        self.depth_frame = FakeDepthFrame()
+    def __init__(
+        self,
+        color_frame: FakeColorFrame | None | object = _DEFAULT_COLOR_FRAME,
+        depth_frame: FakeDepthFrame | None = None,
+    ) -> None:
+        self.color_frame = FakeColorFrame() if color_frame is _DEFAULT_COLOR_FRAME else color_frame
+        self.depth_frame = FakeDepthFrame() if depth_frame is None else depth_frame
 
-    def get_color_frame(self) -> FakeColorFrame:
-        return self.color_frame
+    def get_color_frame(self) -> FakeColorFrame | None:
+        return self.color_frame if self.color_frame is None else self.color_frame
 
     def get_depth_frame(self) -> FakeDepthFrame:
         return self.depth_frame
@@ -88,6 +104,7 @@ class FakePipeline:
         self.device = FakeDevice()
         self.depth_profiles = depth_profiles or FakeVideoProfileList("depth-profile")
         self.color_profiles = color_profiles or FakeVideoProfileList("color-profile")
+        self.frame_sets = [FakeFrameSet()]
 
     def start(self, config=None) -> None:
         self.started = True
@@ -106,7 +123,9 @@ class FakePipeline:
 
     def wait_for_frames(self, timeout_ms: int) -> FakeFrameSet:
         self.wait_timeout_ms = timeout_ms
-        return FakeFrameSet()
+        if len(self.frame_sets) > 1:
+            return self.frame_sets.pop(0)
+        return self.frame_sets[0]
 
     def get_camera_param(self) -> FakeCameraParam:
         return FakeCameraParam()
@@ -119,6 +138,8 @@ class FakeSdk:
     class OBSensorType:
         DEPTH_SENSOR = "depth"
         COLOR_SENSOR = "color"
+        GYRO_SENSOR = "gyro"
+        ACCEL_SENSOR = "accel"
 
     class OBFrameAggregateOutputMode:
         FULL_FRAME_REQUIRE = "full-frame-require"
@@ -165,6 +186,12 @@ class MissingConfigSdk(FakeSdk):
 
 class MissingSensorTypeSdk(FakeSdk):
     OBSensorType = None
+
+
+class MissingImuSensorTypeSdk(FakeSdk):
+    class OBSensorType:
+        DEPTH_SENSOR = "depth"
+        COLOR_SENSOR = "color"
 
 
 class MissingDepthFormatSdk(FakeSdk):
@@ -303,11 +330,53 @@ class FakeDepthSensor:
         return self.filters
 
 
+class FakeImuFrame:
+    def __init__(self, x: float, y: float, z: float, timestamp_us: int) -> None:
+        self.x = x
+        self.y = y
+        self.z = z
+        self.timestamp_us = timestamp_us
+
+    def get_x(self) -> float:
+        return self.x
+
+    def get_y(self) -> float:
+        return self.y
+
+    def get_z(self) -> float:
+        return self.z
+
+    def get_timestamp_us(self) -> int:
+        return self.timestamp_us
+
+
+class FakeImuSensor:
+    def __init__(self) -> None:
+        self.callback: Any | None = None
+        self.started_rate_hz = None
+        self.stopped = False
+
+    def start(self, callback, sample_rate_hz: int) -> None:
+        self.callback = callback
+        self.started_rate_hz = sample_rate_hz
+        self.stopped = False
+
+    def emit(self, frame: FakeImuFrame) -> None:
+        if self.callback is None:
+            raise AssertionError("IMU sensor has not been started.")
+        self.callback(frame)
+
+    def stop(self) -> None:
+        self.stopped = True
+
+
 class FakeDevice:
     def __init__(self) -> None:
         self.depth_modes = FakeDepthWorkModeList()
         self.selected_depth_mode = "Default Mode"
         self.depth_sensor = FakeDepthSensor()
+        self.gyro_sensor = FakeImuSensor()
+        self.accel_sensor = FakeImuSensor()
 
     def get_depth_work_mode_list(self) -> FakeDepthWorkModeList:
         return self.depth_modes
@@ -318,10 +387,14 @@ class FakeDevice:
     def set_depth_work_mode(self, mode: FakeDepthWorkMode) -> None:
         self.selected_depth_mode = mode.name
 
-    def get_sensor(self, sensor_type: str) -> FakeDepthSensor:
-        if sensor_type != "depth":
-            raise AssertionError(f"Unexpected sensor requested: {sensor_type}")
-        return self.depth_sensor
+    def get_sensor(self, sensor_type: str):
+        if sensor_type == "depth":
+            return self.depth_sensor
+        if sensor_type == "gyro":
+            return self.gyro_sensor
+        if sensor_type == "accel":
+            return self.accel_sensor
+        raise AssertionError(f"Unexpected sensor requested: {sensor_type}")
 
 
 class FakeDeviceWithoutCloseUp(FakeDevice):
@@ -465,6 +538,12 @@ class OrbbecCaptureTests(unittest.TestCase):
         with self.assertRaisesRegex(OrbbecCameraError, "OBSensorType"):
             capture.start()
 
+    def test_start_requires_sdk_imu_sensor_types(self) -> None:
+        capture = OrbbecCapture(sdk_module=MissingImuSensorTypeSdk())
+
+        with self.assertRaisesRegex(OrbbecCameraError, "IMU"):
+            capture.start()
+
     def test_start_requires_sdk_depth_format_for_exact_profiles(self) -> None:
         capture = OrbbecCapture(sdk_module=MissingDepthFormatSdk())
 
@@ -525,6 +604,64 @@ class OrbbecCaptureTests(unittest.TestCase):
         self.assertIsInstance(intrinsics, CameraIntrinsics)
         self.assertEqual(intrinsics.fx, 500.0)
         self.assertEqual(capture.depth_scale(), 0.5)
+
+    def test_start_starts_and_stop_stops_imu_sensors_at_configured_rate(self) -> None:
+        sdk = FakeSdk()
+        capture = OrbbecCapture(
+            sdk_module=sdk,
+            color_frame_converter=lambda frame: frame.data,
+            capture_config=CaptureConfig(imu_hz=200),
+        )
+
+        capture.start()
+        capture.stop()
+
+        self.assertEqual(sdk.pipeline.device.gyro_sensor.started_rate_hz, 200)
+        self.assertEqual(sdk.pipeline.device.accel_sensor.started_rate_hz, 200)
+        self.assertTrue(sdk.pipeline.device.gyro_sensor.stopped)
+        self.assertTrue(sdk.pipeline.device.accel_sensor.stopped)
+
+    def test_read_packet_uses_real_timestamps_imu_samples_and_sequence(self) -> None:
+        sdk = FakeSdk()
+        sdk.pipeline.frame_sets = [
+            FakeFrameSet(
+                color_frame=FakeColorFrame(timestamp_us=19_990),
+                depth_frame=FakeDepthFrame(timestamp_ms=20.0),
+            ),
+            FakeFrameSet(
+                color_frame=FakeColorFrame(timestamp_us=21_990),
+                depth_frame=FakeDepthFrame(timestamp_ms=22.0),
+            ),
+        ]
+        capture = OrbbecCapture(sdk_module=sdk, color_frame_converter=lambda frame: frame.data)
+        capture.start()
+        sdk.pipeline.device.gyro_sensor.emit(FakeImuFrame(1.0, 2.0, 3.0, 19_995))
+        sdk.pipeline.device.accel_sensor.emit(FakeImuFrame(0.1, 0.2, 0.3, 20_000))
+        sdk.pipeline.device.gyro_sensor.emit(FakeImuFrame(4.0, 5.0, 6.0, 21_000))
+
+        first = capture.read_packet()
+        second = capture.read_packet()
+
+        self.assertEqual(first.depth_timestamp_us, 20_000)
+        self.assertEqual(first.color_timestamp_us, 19_990)
+        self.assertEqual(first.sequence, 0)
+        self.assertEqual([sample.sensor for sample in first.imu_samples], ["gyro", "accel"])
+        self.assertEqual([sample.timestamp_us for sample in first.imu_samples], [19_995, 20_000])
+        np.testing.assert_array_equal(first.imu_samples[0].xyz, np.array([1.0, 2.0, 3.0]))
+        np.testing.assert_array_equal(first.color_bgr, np.arange(12, dtype=np.uint8).reshape(2, 2, 3))
+        np.testing.assert_array_equal(first.depth_raw, np.array([[100, 200], [0, 300]], dtype=np.uint16))
+        self.assertEqual(first.depth_scale_mm, 0.5)
+        self.assertEqual(second.sequence, 1)
+        self.assertEqual([sample.timestamp_us for sample in second.imu_samples], [21_000])
+
+    def test_read_packet_requires_color_frame(self) -> None:
+        sdk = FakeSdk()
+        sdk.pipeline.frame_sets = [FakeFrameSet(color_frame=None)]
+        capture = OrbbecCapture(sdk_module=sdk, color_frame_converter=lambda frame: frame.data)
+        capture.start()
+
+        with self.assertRaisesRegex(OrbbecFrameError, "Color frame"):
+            capture.read_packet()
 
     def test_align_to_depth_processes_frame_set_before_reading_frames(self) -> None:
         sdk = FakeSdk()
