@@ -53,7 +53,16 @@ class CaptureConfig:
     depth_width: int = 1280
     depth_height: int = 800
     depth_fps: int = 30
+    depth_format: Literal["Y16"] = "Y16"
     color_width: int = 1280
     color_height: int = 720
     color_fps: int = 30
+    color_format: Literal["RGB"] = "RGB"
     imu_hz: int = 200
+    depth_precision_mode: Literal["Close_Up"] = "Close_Up"
+    depth_min_m: float = 0.15
+    depth_max_m: float = 0.50
+    normal_scan_min_m: float = 0.20
+    normal_scan_max_m: float = 0.40
+    object_min_cm: float = 5.0
+    object_max_cm: float = 30.0
