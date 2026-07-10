@@ -60,6 +60,19 @@ Sau khi cai Orbbec SDK va cam camera qua USB 3.0:
 python scripts/01_rgbd_viewer.py
 ```
 
+Chay hardware qualification gate truoc khi tiep tuc markerless tracking:
+
+```powershell
+C:\Users\TD-998\OrbbecGemini215-3DScanner\.venv\Scripts\python.exe scripts\12_hardware_qualification.py
+```
+
+Dung mot tam phang matte, khong bong, mau dong nhat, dat vuong goc voi camera va lap day nua giua
+khung depth. Chuan bi moc 0.20 m, 0.30 m va 0.40 m tu camera den mat phang. Giu camera, day USB 3.0
+va target co dinh trong warm-up 10 giay va tung lan capture. Script se ghi
+`data/sessions/qualification_<timestamp>.json`, in PASS/FAIL, va chi dat khi RGB-D >= 24 fps,
+IMU trong 190-210 Hz, central object valid ratio >= 0.70, median noise <= 1.0 mm va p90 noise <= 2.0 mm.
+Khong tiep tuc markerless tracking neu gate nay FAIL.
+
 Xem point cloud co mau real-time:
 
 ```powershell
