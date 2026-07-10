@@ -11,9 +11,11 @@ from typing import Any
 
 import numpy as np
 
+from scanner_app.camera.imu_buffer import ImuBuffer
 from scanner_app.camera.models import (
     CameraIntrinsics,
     CaptureConfig,
+    ImuSample,
     RgbdFrame,
     SynchronizedFramePacket,
 )
@@ -52,6 +54,10 @@ class OrbbecCapture:
         self.enabled_depth_filter_names: tuple[str, ...] = ()
         self._pipeline: Any | None = None
         self._last_depth_scale: float | None = None
+        self._last_color_timestamp_us = 0
+        self._imu_buffer = ImuBuffer()
+        self._imu_sensors: tuple[Any, ...] = ()
+        self._sequence = 0
 
     def start(self) -> None:
         sdk = self._sdk or self._load_sdk()
@@ -64,6 +70,7 @@ class OrbbecCapture:
             config = self._build_stream_config(sdk, pipeline)
             self._configure_depth_mode_and_filters(sdk, pipeline)
             self._align_filter = self._build_align_filter(sdk) if self._align_to_depth else None
+            self._start_imu_sensors(sdk, pipeline)
             enable_sync = getattr(pipeline, "enable_frame_sync", None)
             if enable_sync is None:
                 raise OrbbecCameraError("Orbbec pipeline does not provide enable_frame_sync.")
@@ -107,6 +114,9 @@ class OrbbecCapture:
 
         color_frame = frames.get_color_frame()
         color = self._convert_color_frame(color_frame) if color_frame is not None else None
+        self._last_color_timestamp_us = (
+            self._frame_timestamp_us(color_frame) if color_frame is not None else 0
+        )
 
         width = depth_frame.get_width()
         height = depth_frame.get_height()
@@ -120,6 +130,24 @@ class OrbbecCapture:
             depth_scale=depth_scale,
             timestamp_ms=self._frame_timestamp_ms(depth_frame),
         )
+
+    def read_packet(self) -> SynchronizedFramePacket:
+        frame = self.read()
+        if frame.color is None:
+            raise OrbbecFrameError("Color frame missing from Orbbec frame set.")
+
+        depth_timestamp_us = int(round(frame.timestamp_ms * 1000.0))
+        packet = SynchronizedFramePacket(
+            color_bgr=frame.color,
+            depth_raw=frame.depth,
+            depth_scale_mm=frame.depth_scale,
+            depth_timestamp_us=depth_timestamp_us,
+            color_timestamp_us=self._last_color_timestamp_us,
+            imu_samples=self._imu_buffer.pop_through(depth_timestamp_us),
+            sequence=self._sequence,
+        )
+        self._sequence += 1
+        return packet
 
     def intrinsics(self) -> CameraIntrinsics:
         if self._pipeline is None:
@@ -142,6 +170,7 @@ class OrbbecCapture:
         return self._last_depth_scale
 
     def stop(self) -> None:
+        self._stop_imu_sensors()
         if self._pipeline is not None:
             self._pipeline.stop()
         self._clear_started_state()
@@ -310,11 +339,94 @@ class OrbbecCapture:
             return "Close_Up Precision Mode"
         return str(self._capture_config.depth_precision_mode)
 
+    def _start_imu_sensors(self, sdk: Any, pipeline: Any) -> None:
+        get_device = getattr(pipeline, "get_device", None)
+        sensor_type = getattr(sdk, "OBSensorType", None)
+        if get_device is None or sensor_type is None:
+            raise OrbbecCameraError("Orbbec SDK does not provide required IMU device APIs.")
+
+        gyro_type = getattr(sensor_type, "GYRO_SENSOR", None)
+        accel_type = getattr(sensor_type, "ACCEL_SENSOR", None)
+        if gyro_type is None or accel_type is None:
+            raise OrbbecCameraError("Orbbec SDK does not provide required IMU sensor types.")
+
+        device = get_device()
+        get_sensor = getattr(device, "get_sensor", None)
+        if get_sensor is None:
+            raise OrbbecCameraError("Orbbec device does not provide required IMU get_sensor API.")
+
+        self._imu_buffer = ImuBuffer()
+        started_sensors: list[Any] = []
+        try:
+            gyro_sensor = get_sensor(gyro_type)
+            self._start_imu_sensor(
+                gyro_sensor,
+                self._build_imu_callback("gyro"),
+                self._capture_config.imu_hz,
+            )
+            started_sensors.append(gyro_sensor)
+
+            accel_sensor = get_sensor(accel_type)
+            self._start_imu_sensor(
+                accel_sensor,
+                self._build_imu_callback("accel"),
+                self._capture_config.imu_hz,
+            )
+            started_sensors.append(accel_sensor)
+        except Exception as error:
+            for sensor in reversed(started_sensors):
+                stop = getattr(sensor, "stop", None)
+                if stop is not None:
+                    stop()
+            if isinstance(error, OrbbecCameraError):
+                raise
+            raise OrbbecCameraError(f"Failed to start Orbbec IMU sensors: {error}") from error
+
+        self._imu_sensors = tuple(started_sensors)
+
+    @staticmethod
+    def _start_imu_sensor(sensor: Any, callback: Any, sample_rate_hz: int) -> None:
+        start = getattr(sensor, "start", None)
+        if start is None:
+            raise OrbbecCameraError("Orbbec IMU sensor does not provide required start API.")
+
+        try:
+            start(callback, sample_rate_hz)
+        except TypeError:
+            configure_rate = getattr(sensor, "set_sample_rate", None)
+            if configure_rate is not None:
+                configure_rate(sample_rate_hz)
+            start(callback)
+
+    def _build_imu_callback(self, sensor_name: str) -> Any:
+        def callback(frame: Any) -> None:
+            self._imu_buffer.push(
+                ImuSample(
+                    sensor=sensor_name,  # type: ignore[arg-type]
+                    timestamp_us=int(frame.get_timestamp_us()),
+                    xyz=np.array(
+                        [float(frame.get_x()), float(frame.get_y()), float(frame.get_z())],
+                        dtype=np.float64,
+                    ),
+                )
+            )
+
+        return callback
+
+    def _stop_imu_sensors(self) -> None:
+        for sensor in reversed(self._imu_sensors):
+            stop = getattr(sensor, "stop", None)
+            if stop is not None:
+                stop()
+        self._imu_sensors = ()
+
     def _clear_started_state(self) -> None:
+        self._stop_imu_sensors()
         self._pipeline = None
         self._align_filter = None
         self._depth_filters = ()
         self.enabled_depth_filter_names = ()
+        self._last_color_timestamp_us = 0
 
     @staticmethod
     def _build_align_filter(sdk: Any) -> Any:
@@ -370,3 +482,10 @@ class OrbbecCapture:
             if method is not None:
                 return float(method())
         return 0.0
+
+    @staticmethod
+    def _frame_timestamp_us(frame: Any) -> int:
+        method = getattr(frame, "get_timestamp_us", None)
+        if method is not None:
+            return int(method())
+        return int(round(OrbbecCapture._frame_timestamp_ms(frame) * 1000.0))
