@@ -13,7 +13,12 @@ except ImportError:
 add_src_to_path()
 
 from scanner_app.camera.models import CaptureConfig
-from scanner_app.camera.orbbec_capture import CameraIntrinsics, OrbbecCameraError, OrbbecCapture
+from scanner_app.camera.orbbec_capture import (
+    CameraIntrinsics,
+    OrbbecCameraError,
+    OrbbecCapture,
+    OrbbecFrameError,
+)
 
 
 class FakeDepthFrame:
@@ -143,6 +148,68 @@ class FakeSdk:
         return self.align_filter
 
 
+class FailingFrameSyncPipeline(FakePipeline):
+    def enable_frame_sync(self) -> None:
+        raise RuntimeError("sync unavailable")
+
+
+class FailingFrameSyncSdk(FakeSdk):
+    def __init__(self) -> None:
+        super().__init__()
+        self.pipeline = FailingFrameSyncPipeline(self.depth_profiles, self.color_profiles)
+
+
+class MissingConfigSdk(FakeSdk):
+    Config = None
+
+
+class MissingSensorTypeSdk(FakeSdk):
+    OBSensorType = None
+
+
+class MissingDepthFormatSdk(FakeSdk):
+    class OBFormat:
+        RGB = "rgb"
+
+
+class MissingGetDevicePipeline(FakePipeline):
+    get_device = None
+
+
+class MissingGetDeviceSdk(FakeSdk):
+    def __init__(self) -> None:
+        super().__init__()
+        self.pipeline = MissingGetDevicePipeline(self.depth_profiles, self.color_profiles)
+
+
+class MissingProfileApiList:
+    pass
+
+
+class MissingProfileApiSdk(FakeSdk):
+    def __init__(self) -> None:
+        super().__init__()
+        self.depth_profiles = MissingProfileApiList()
+        self.pipeline = FakePipeline(self.depth_profiles, self.color_profiles)
+
+
+class FailingVideoProfileList:
+    def __init__(self, profile) -> None:
+        self.profile = profile
+        self.requests = []
+
+    def get_video_stream_profile(self, width, height, frame_format, fps):
+        self.requests.append((width, height, frame_format, fps))
+        raise RuntimeError("exact profile unavailable")
+
+
+class FailingExactProfileSdk(FakeSdk):
+    def __init__(self) -> None:
+        super().__init__()
+        self.depth_profiles = FailingVideoProfileList("depth-profile")
+        self.pipeline = FakePipeline(self.depth_profiles, self.color_profiles)
+
+
 class FakeAlignFilter:
     def __init__(self, align_to_stream) -> None:
         self.align_to_stream = align_to_stream
@@ -185,10 +252,22 @@ class FakeDepthWorkModeList:
         return self.modes[index]
 
 
+class FakeDepthWorkModeListWithoutCloseUp:
+    def __init__(self) -> None:
+        self.modes = (FakeDepthWorkMode("Default Mode"),)
+
+    def get_count(self) -> int:
+        return len(self.modes)
+
+    def get_depth_work_mode_by_index(self, index: int) -> FakeDepthWorkMode:
+        return self.modes[index]
+
+
 class FakeDepthFilter:
-    def __init__(self, name: str, enabled: bool) -> None:
+    def __init__(self, name: str, enabled: bool, null_depth_frame: bool = False) -> None:
         self.name = name
         self.enabled = enabled
+        self.null_depth_frame = null_depth_frame
         self.processed_frame = None
 
     def is_enabled(self) -> bool:
@@ -199,14 +278,17 @@ class FakeDepthFilter:
 
     def process(self, depth_frame):
         self.processed_frame = depth_frame
-        return FakeFilteredDepthFrame(depth_frame)
+        return FakeFilteredDepthFrame(depth_frame, null_depth_frame=self.null_depth_frame)
 
 
 class FakeFilteredDepthFrame:
-    def __init__(self, depth_frame) -> None:
+    def __init__(self, depth_frame, null_depth_frame: bool = False) -> None:
         self.depth_frame = depth_frame
+        self.null_depth_frame = null_depth_frame
 
     def as_depth_frame(self):
+        if self.null_depth_frame:
+            return None
         return self.depth_frame
 
 
@@ -242,6 +324,28 @@ class FakeDevice:
         return self.depth_sensor
 
 
+class FakeDeviceWithoutCloseUp(FakeDevice):
+    def __init__(self) -> None:
+        super().__init__()
+        self.depth_modes = FakeDepthWorkModeListWithoutCloseUp()
+
+
+class MissingCloseUpPipeline(FakePipeline):
+    def __init__(
+        self,
+        depth_profiles: "FakeVideoProfileList | None" = None,
+        color_profiles: "FakeVideoProfileList | None" = None,
+    ) -> None:
+        super().__init__(depth_profiles, color_profiles)
+        self.device = FakeDeviceWithoutCloseUp()
+
+
+class MissingCloseUpSdk(FakeSdk):
+    def __init__(self) -> None:
+        super().__init__()
+        self.pipeline = MissingCloseUpPipeline(self.depth_profiles, self.color_profiles)
+
+
 class FakeConfig:
     def __init__(self) -> None:
         self.enabled_profiles = []
@@ -254,14 +358,18 @@ class FakeConfig:
         self.frame_aggregate_output_mode = mode
 
 
-class FailingPipeline:
+class FailingPipeline(FakePipeline):
     def start(self, config=None) -> None:
         raise RuntimeError("No device found")
 
 
-class FailingSdk:
+class FailingSdk(FakeSdk):
+    def __init__(self) -> None:
+        super().__init__()
+        self.pipeline = FailingPipeline(self.depth_profiles, self.color_profiles)
+
     def Pipeline(self) -> FailingPipeline:
-        return FailingPipeline()
+        return self.pipeline
 
 
 class FakeEmptyDeviceList:
@@ -328,6 +436,68 @@ class OrbbecCaptureTests(unittest.TestCase):
 
         self.assertIn("color-profile-rgb", sdk.config.enabled_profiles)
 
+    def test_start_cleans_up_when_setup_fails_before_pipeline_start(self) -> None:
+        sdk = FailingFrameSyncSdk()
+        capture = OrbbecCapture(
+            sdk_module=sdk,
+            color_frame_converter=lambda frame: frame.data,
+            align_to_depth=True,
+        )
+
+        with self.assertRaisesRegex(OrbbecCameraError, "frame sync"):
+            capture.start()
+
+        self.assertFalse(sdk.pipeline.started)
+        self.assertIsNone(capture._pipeline)
+        self.assertIsNone(capture._align_filter)
+        self.assertEqual(capture._depth_filters, ())
+        self.assertEqual(capture.enabled_depth_filter_names, ())
+
+    def test_start_requires_sdk_config_api_for_exact_profiles(self) -> None:
+        capture = OrbbecCapture(sdk_module=MissingConfigSdk())
+
+        with self.assertRaisesRegex(OrbbecCameraError, "Config"):
+            capture.start()
+
+    def test_start_requires_sdk_sensor_type_api_for_exact_profiles(self) -> None:
+        capture = OrbbecCapture(sdk_module=MissingSensorTypeSdk())
+
+        with self.assertRaisesRegex(OrbbecCameraError, "OBSensorType"):
+            capture.start()
+
+    def test_start_requires_sdk_depth_format_for_exact_profiles(self) -> None:
+        capture = OrbbecCapture(sdk_module=MissingDepthFormatSdk())
+
+        with self.assertRaisesRegex(OrbbecCameraError, "Y16"):
+            capture.start()
+
+    def test_start_requires_sdk_profile_api_for_exact_profiles(self) -> None:
+        capture = OrbbecCapture(sdk_module=MissingProfileApiSdk())
+
+        with self.assertRaisesRegex(OrbbecCameraError, "get_video_stream_profile"):
+            capture.start()
+
+    def test_start_raises_when_exact_depth_profile_is_unavailable(self) -> None:
+        sdk = FailingExactProfileSdk()
+        capture = OrbbecCapture(sdk_module=sdk)
+
+        with self.assertRaisesRegex(OrbbecCameraError, "exact profile unavailable"):
+            capture.start()
+
+        self.assertIn((1280, 800, "y16", 30), sdk.depth_profiles.requests)
+
+    def test_start_requires_close_up_depth_mode(self) -> None:
+        capture = OrbbecCapture(sdk_module=MissingCloseUpSdk())
+
+        with self.assertRaisesRegex(OrbbecCameraError, "Close_Up Precision Mode"):
+            capture.start()
+
+    def test_start_requires_device_api_for_close_up_depth_mode(self) -> None:
+        capture = OrbbecCapture(sdk_module=MissingGetDeviceSdk())
+
+        with self.assertRaisesRegex(OrbbecCameraError, "get_device"):
+            capture.start()
+
     def test_start_read_intrinsics_and_stop_use_sdk_pipeline(self) -> None:
         sdk = FakeSdk()
         capture = OrbbecCapture(
@@ -370,6 +540,21 @@ class OrbbecCaptureTests(unittest.TestCase):
         self.assertIsNotNone(sdk.align_filter)
         self.assertEqual(sdk.align_filter.align_to_stream, "depth-stream")
         self.assertIsInstance(sdk.align_filter.processed_frames, FakeFrameSet)
+
+    def test_read_raises_when_depth_filter_does_not_return_depth_frame(self) -> None:
+        sdk = FakeSdk()
+        sdk.pipeline.device.depth_sensor.filters = (
+            FakeDepthFilter("TemporalFilter", True, null_depth_frame=True),
+        )
+        capture = OrbbecCapture(
+            sdk_module=sdk,
+            color_frame_converter=lambda frame: frame.data,
+        )
+
+        capture.start()
+
+        with self.assertRaisesRegex(OrbbecFrameError, "TemporalFilter"):
+            capture.read()
 
     def test_start_creates_sdk_log_directory_and_wraps_sdk_errors(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
