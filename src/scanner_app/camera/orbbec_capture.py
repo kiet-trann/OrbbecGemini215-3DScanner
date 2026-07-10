@@ -38,14 +38,18 @@ class OrbbecCapture:
         self,
         sdk_module: Any | None = None,
         color_frame_converter: Any | None = None,
+        capture_config: CaptureConfig | None = None,
         timeout_ms: int = 1000,
         align_to_depth: bool = False,
     ) -> None:
         self._sdk = sdk_module
         self._color_frame_converter = color_frame_converter
+        self._capture_config = capture_config or CaptureConfig()
         self._timeout_ms = timeout_ms
         self._align_to_depth = align_to_depth
         self._align_filter: Any | None = None
+        self._depth_filters: tuple[Any, ...] = ()
+        self.enabled_depth_filter_names: tuple[str, ...] = ()
         self._pipeline: Any | None = None
         self._last_depth_scale: float | None = None
 
@@ -56,12 +60,18 @@ class OrbbecCapture:
         self._assert_device_available(sdk)
         self._pipeline = sdk.Pipeline()
         config = self._build_stream_config(sdk, self._pipeline)
+        self._configure_depth_mode_and_filters(sdk, self._pipeline)
         self._align_filter = self._build_align_filter(sdk) if self._align_to_depth else None
+        enable_sync = getattr(self._pipeline, "enable_frame_sync", None)
+        if enable_sync is not None:
+            enable_sync()
         try:
             self._pipeline.start(config)
         except Exception as error:
             self._pipeline = None
             self._align_filter = None
+            self._depth_filters = ()
+            self.enabled_depth_filter_names = ()
             raise OrbbecCameraError(f"Failed to start Orbbec camera: {error}") from error
 
     def read(self) -> RgbdFrame:
@@ -80,6 +90,12 @@ class OrbbecCapture:
         depth_frame = frames.get_depth_frame()
         if depth_frame is None:
             raise OrbbecFrameError("Depth frame missing from Orbbec frame set.")
+
+        for depth_filter in self._depth_filters:
+            filtered = depth_filter.process(depth_frame)
+            if filtered is None:
+                raise OrbbecFrameError(f"Depth filter failed: {depth_filter.get_name()}")
+            depth_frame = filtered.as_depth_frame()
 
         color_frame = frames.get_color_frame()
         color = self._convert_color_frame(color_frame) if color_frame is not None else None
@@ -122,6 +138,8 @@ class OrbbecCapture:
             self._pipeline.stop()
             self._pipeline = None
         self._align_filter = None
+        self._depth_filters = ()
+        self.enabled_depth_filter_names = ()
 
     @staticmethod
     def _load_sdk() -> Any:
@@ -153,8 +171,7 @@ class OrbbecCapture:
                 "Orbbec Viewer or Device Manager."
             )
 
-    @staticmethod
-    def _build_stream_config(sdk: Any, pipeline: Any) -> Any | None:
+    def _build_stream_config(self, sdk: Any, pipeline: Any) -> Any | None:
         config_factory = getattr(sdk, "Config", None)
         sensor_type = getattr(sdk, "OBSensorType", None)
         if config_factory is None or sensor_type is None:
@@ -164,7 +181,12 @@ class OrbbecCapture:
         try:
             depth_sensor = getattr(sensor_type, "DEPTH_SENSOR")
             depth_profiles = pipeline.get_stream_profile_list(depth_sensor)
-            depth_profile = depth_profiles.get_default_video_stream_profile()
+            depth_profile = depth_profiles.get_video_stream_profile(
+                self._capture_config.depth_width,
+                self._capture_config.depth_height,
+                self._sdk_format(sdk, self._capture_config.depth_format),
+                self._capture_config.depth_fps,
+            )
             config.enable_stream(depth_profile)
         except Exception as error:
             raise OrbbecCameraError(f"Cannot configure Orbbec depth stream: {error}") from error
@@ -172,10 +194,15 @@ class OrbbecCapture:
         try:
             color_sensor = getattr(sensor_type, "COLOR_SENSOR")
             color_profiles = pipeline.get_stream_profile_list(color_sensor)
-            color_profile = OrbbecCapture._color_stream_profile(sdk, color_profiles)
+            color_profile = color_profiles.get_video_stream_profile(
+                self._capture_config.color_width,
+                self._capture_config.color_height,
+                self._sdk_format(sdk, self._capture_config.color_format),
+                self._capture_config.color_fps,
+            )
             config.enable_stream(color_profile)
-        except Exception:
-            pass
+        except Exception as error:
+            raise OrbbecCameraError(f"Cannot configure Orbbec color stream: {error}") from error
 
         aggregate_mode = getattr(sdk, "OBFrameAggregateOutputMode", None)
         set_aggregate_mode = getattr(config, "set_frame_aggregate_output_mode", None)
@@ -185,15 +212,60 @@ class OrbbecCapture:
         return config
 
     @staticmethod
-    def _color_stream_profile(sdk: Any, color_profiles: Any) -> Any:
-        frame_format = getattr(getattr(sdk, "OBFormat", None), "RGB", None)
-        get_video_profile = getattr(color_profiles, "get_video_stream_profile", None)
-        if frame_format is not None and get_video_profile is not None:
-            try:
-                return get_video_profile(0, 0, frame_format, 0)
-            except Exception:
-                pass
-        return color_profiles.get_default_video_stream_profile()
+    def _sdk_format(sdk: Any, format_name: str) -> Any:
+        sdk_formats = getattr(sdk, "OBFormat", None)
+        frame_format = getattr(sdk_formats, format_name, None)
+        if frame_format is None:
+            raise OrbbecCameraError(f"Orbbec SDK does not provide required {format_name} format.")
+        return frame_format
+
+    def _configure_depth_mode_and_filters(self, sdk: Any, pipeline: Any) -> None:
+        get_device = getattr(pipeline, "get_device", None)
+        sensor_type = getattr(sdk, "OBSensorType", None)
+        if get_device is None or sensor_type is None:
+            return
+
+        device = get_device()
+        self._select_depth_work_mode(device)
+        depth_sensor = device.get_sensor(getattr(sensor_type, "DEPTH_SENSOR"))
+        self._depth_filters = tuple(
+            depth_filter
+            for depth_filter in depth_sensor.get_recommended_filters()
+            if depth_filter.is_enabled()
+        )
+        self.enabled_depth_filter_names = tuple(
+            depth_filter.get_name() for depth_filter in self._depth_filters
+        )
+
+    def _select_depth_work_mode(self, device: Any) -> None:
+        required_mode_name = self._required_depth_work_mode_name()
+        try:
+            modes = device.get_depth_work_mode_list()
+            close_up = next(
+                mode
+                for mode in (
+                    modes.get_depth_work_mode_by_index(index) for index in range(modes.get_count())
+                )
+                if mode.name == required_mode_name
+            )
+        except StopIteration as error:
+            raise OrbbecCameraError(
+                f"Required Orbbec depth work mode is unavailable: {required_mode_name}"
+            ) from error
+        except Exception as error:
+            raise OrbbecCameraError(f"Cannot inspect Orbbec depth work modes: {error}") from error
+
+        try:
+            current_mode = device.get_depth_work_mode()
+            if current_mode.name != close_up.name:
+                device.set_depth_work_mode(close_up)
+        except Exception as error:
+            raise OrbbecCameraError(f"Cannot select Orbbec depth work mode: {error}") from error
+
+    def _required_depth_work_mode_name(self) -> str:
+        if self._capture_config.depth_precision_mode == "Close_Up":
+            return "Close_Up Precision Mode"
+        return str(self._capture_config.depth_precision_mode)
 
     @staticmethod
     def _build_align_filter(sdk: Any) -> Any:
