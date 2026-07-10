@@ -1,5 +1,6 @@
 import json
-from queue import Full
+from queue import Full, Queue
+from threading import Thread
 
 import numpy as np
 import pytest
@@ -92,3 +93,55 @@ def test_submit_raises_recording_error_when_queue_is_full(tmp_path, monkeypatch)
         recorder.submit(_packet())
 
     recorder.close()
+
+
+def test_duplicate_packet_sequence_raises_recording_error(tmp_path) -> None:
+    recorder = SessionRecorder(tmp_path)
+    recorder.submit(_packet(sequence=11))
+    recorder.submit(_packet(sequence=11))
+
+    with pytest.raises(SessionRecordingError, match="already exists"):
+        recorder.close()
+
+
+def test_close_does_not_block_when_worker_failed_and_queue_is_full(tmp_path) -> None:
+    class JoinedWorker:
+        def join(self) -> None:
+            return None
+
+    recorder = SessionRecorder.__new__(SessionRecorder)
+    recorder._closed = False
+    recorder._worker = JoinedWorker()
+    recorder._queue = Queue(maxsize=1)
+    recorder._queue.put_nowait(_packet(sequence=12))
+    recorder._worker_error = RuntimeError("worker exploded")
+
+    close_error: list[BaseException] = []
+
+    def close_recorder() -> None:
+        try:
+            recorder.close()
+        except BaseException as exc:
+            close_error.append(exc)
+
+    close_thread = Thread(target=close_recorder, daemon=True)
+    close_thread.start()
+    close_thread.join(timeout=0.2)
+    was_blocked = close_thread.is_alive()
+
+    if was_blocked:
+        recorder._queue.get_nowait()
+        close_thread.join(timeout=1.0)
+
+    assert not was_blocked
+    assert isinstance(close_error[0], SessionRecordingError)
+    assert isinstance(close_error[0].__cause__, RuntimeError)
+
+
+def test_close_is_idempotent_and_submit_after_close_errors(tmp_path) -> None:
+    recorder = SessionRecorder(tmp_path)
+    recorder.close()
+    recorder.close()
+
+    with pytest.raises(SessionRecordingError, match="Recorder is closed"):
+        recorder.submit(_packet(sequence=13))
