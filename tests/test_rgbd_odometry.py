@@ -1,4 +1,7 @@
+import os
+from pathlib import Path
 import sys
+import subprocess
 
 import numpy as np
 
@@ -183,4 +186,12 @@ def test_opencv_backend_returns_failed_estimate_when_features_are_missing() -> N
 
 
 def test_importing_adapter_does_not_import_open3d_until_production_backend_is_used() -> None:
-    assert "open3d" not in sys.modules
+    code = (
+        "import sys; "
+        "import scanner_app.tracking.rgbd_odometry; "
+        "raise SystemExit(1 if 'open3d' in sys.modules else 0)"
+    )
+    src_path = Path(__file__).resolve().parents[1] / "src"
+    env = {**os.environ, "PYTHONPATH": str(src_path)}
+    result = subprocess.run([sys.executable, "-c", code], check=False, env=env)
+    assert result.returncode == 0

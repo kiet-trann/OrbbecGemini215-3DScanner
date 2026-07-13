@@ -24,12 +24,16 @@ class LiveFusionEngine:
         sdf_trunc_m: float = 0.006,
         min_depth_m: float = 0.20,
         max_depth_m: float = 0.30,
+        integration_width: int | None = None,
+        integration_height: int | None = None,
     ) -> None:
         self.intrinsics = intrinsics
         self.voxel_length_m = float(voxel_length_m)
         self.sdf_trunc_m = float(sdf_trunc_m)
         self.min_depth_m = float(min_depth_m)
         self.max_depth_m = float(max_depth_m)
+        self.integration_width = integration_width
+        self.integration_height = integration_height
         self.roi_min = np.asarray(
             roi_min if roi_min is not None else [-DEFAULT_ROI_HALF_EXTENT_M] * 3,
             dtype=np.float64,
@@ -63,6 +67,8 @@ class LiveFusionEngine:
             sdf_trunc_m=self.sdf_trunc_m,
             min_depth_m=self.min_depth_m,
             max_depth_m=self.max_depth_m,
+            integration_width=self.integration_width,
+            integration_height=self.integration_height,
         )
 
 
@@ -75,12 +81,16 @@ class Open3dTsdfAdapter:
         sdf_trunc_m: float,
         min_depth_m: float,
         max_depth_m: float,
+        integration_width: int | None,
+        integration_height: int | None,
     ) -> None:
         from scanner_app.fusion.tsdf import create_tsdf_volume
 
         self.intrinsics = intrinsics
         self.min_depth_m = float(min_depth_m)
         self.max_depth_m = float(max_depth_m)
+        self.integration_width = integration_width
+        self.integration_height = integration_height
         self._volume = create_tsdf_volume(
             voxel_length_m=voxel_length_m,
             sdf_trunc_m=sdf_trunc_m,
@@ -95,17 +105,11 @@ class Open3dTsdfAdapter:
     ) -> int:
         from scanner_app.fusion.tsdf import integrate_rgbd_frame
 
-        packet = keyframe.packet
-        frame = RgbdFrame(
-            color=packet.color_bgr,
-            depth=packet.depth_raw,
-            depth_scale=packet.depth_scale_mm,
-            timestamp_ms=packet.depth_timestamp_us / 1000.0,
-        )
+        frame, intrinsics = self._frame_and_intrinsics(keyframe)
         return integrate_rgbd_frame(
             self._volume,
             frame=frame,
-            intrinsics=self.intrinsics,
+            intrinsics=intrinsics,
             camera_to_world=keyframe.camera_to_world,
             min_depth_m=self.min_depth_m,
             max_depth_m=self.max_depth_m,
@@ -118,6 +122,36 @@ class Open3dTsdfAdapter:
         mesh.compute_vertex_normals()
         return mesh
 
+    def _frame_and_intrinsics(self, keyframe: Any) -> tuple[RgbdFrame, CameraIntrinsics]:
+        packet = keyframe.packet
+        if self.integration_width is None or self.integration_height is None:
+            return (
+                RgbdFrame(
+                    color=packet.color_bgr,
+                    depth=packet.depth_raw,
+                    depth_scale=packet.depth_scale_mm,
+                    timestamp_ms=packet.depth_timestamp_us / 1000.0,
+                ),
+                self.intrinsics,
+            )
+
+        import cv2
+        from scanner_app.tracking.rgbd_odometry import scale_tracking_intrinsics
+
+        width = int(self.integration_width)
+        height = int(self.integration_height)
+        color = cv2.resize(packet.color_bgr, (width, height), interpolation=cv2.INTER_NEAREST)
+        depth = cv2.resize(packet.depth_raw, (width, height), interpolation=cv2.INTER_NEAREST)
+        return (
+            RgbdFrame(
+                color=color,
+                depth=depth,
+                depth_scale=packet.depth_scale_mm,
+                timestamp_ms=packet.depth_timestamp_us / 1000.0,
+            ),
+            scale_tracking_intrinsics(self.intrinsics, width, height),
+        )
+
 
 def _validate_roi(roi_min: np.ndarray, roi_max: np.ndarray) -> None:
     if roi_min.shape != (3,) or roi_max.shape != (3,):
@@ -125,5 +159,5 @@ def _validate_roi(roi_min: np.ndarray, roi_max: np.ndarray) -> None:
     if np.any(roi_min >= roi_max):
         raise ValueError("ROI min must be smaller than ROI max on every axis.")
     extent = roi_max - roi_min
-    if np.any(extent > MAX_OBJECT_ROI_AXIS_M):
+    if np.any(extent > MAX_OBJECT_ROI_AXIS_M + 1e-12):
         raise ValueError("Object ROI cannot exceed 0.35 m on any axis.")
