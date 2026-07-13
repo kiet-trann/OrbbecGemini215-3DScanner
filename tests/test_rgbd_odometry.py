@@ -117,5 +117,28 @@ def test_adapter_resizes_rgbd_inputs_converts_bgr_to_rgb_and_uses_imu_initial_tr
     assert estimate.depth_valid_ratio == 0.5
 
 
+def test_adapter_rejects_sparse_depth_before_backend_call() -> None:
+    backend = FakeBackend()
+    adapter = RgbdOdometryAdapter(
+        CameraIntrinsics(800, 600, 640, 400, 1280, 800),
+        backend=backend,
+    )
+    color = np.zeros((2, 2, 3), dtype=np.uint8)
+    sparse_depth = np.array([[0.25, 0.0], [0.0, 0.0]], dtype=np.float32)
+
+    estimate = adapter.estimate(
+        packet(color),
+        processed(sparse_depth),
+        packet(color),
+        processed(sparse_depth),
+        np.eye(3),
+    )
+
+    assert backend.calls == []
+    assert estimate.fitness == 0.0
+    assert np.isinf(estimate.rmse_m)
+    assert estimate.depth_valid_ratio == 0.25
+
+
 def test_importing_adapter_does_not_import_open3d_until_production_backend_is_used() -> None:
     assert "open3d" not in sys.modules
