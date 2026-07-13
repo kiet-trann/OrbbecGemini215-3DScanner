@@ -73,6 +73,19 @@ va target co dinh trong warm-up 10 giay va tung lan capture. Script se ghi
 IMU trong 190-210 Hz, central object valid ratio >= 0.70, median noise <= 1.0 mm va p90 noise <= 2.0 mm.
 Khong tiep tuc markerless tracking neu gate nay FAIL.
 
+Chay markerless RGB-D tracking o Close-Up Precision Mode cho vat nho 5-30 cm, giu depth trong
+khoang 0.20-0.30 m va in moi ket qua tracking thanh mot dong JSON:
+
+```powershell
+C:\Users\TD-998\OrbbecGemini215-3DScanner\.venv\Scripts\python.exe scripts\13_markerless_tracking.py --min-depth-m 0.20 --max-depth-m 0.30
+```
+
+Chay lai tracking tu session da record thi can truyen depth intrinsics cua session:
+
+```powershell
+C:\Users\TD-998\OrbbecGemini215-3DScanner\.venv\Scripts\python.exe scripts\13_markerless_tracking.py --replay data\sessions\scan_demo --max-frames 120 --intrinsics-fx 500 --intrinsics-fy 500 --intrinsics-cx 320 --intrinsics-cy 200 --intrinsics-width 640 --intrinsics-height 400
+```
+
 Xem point cloud co mau real-time:
 
 ```powershell
