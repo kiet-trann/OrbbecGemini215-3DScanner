@@ -3,6 +3,7 @@ from pathlib import Path
 import sys
 
 import numpy as np
+import pytest
 
 from scanner_app.camera.models import CameraIntrinsics, SynchronizedFramePacket
 from scanner_app.tracking.keyframes import Keyframe
@@ -287,3 +288,43 @@ def test_headless_live_scan_does_not_extract_preview_mesh() -> None:
     )
 
     assert summary.integrated_keyframes == 1
+
+
+def test_validate_export_mesh_rejects_many_fragment_components() -> None:
+    module = load_markerless_scanner_module()
+
+    class FragmentedMesh:
+        triangles = [object()] * 10
+
+        def cluster_connected_triangles(self):
+            return None, [5, 1, 1, 1], [1.0, 0.1, 0.1, 0.1]
+
+        def get_axis_aligned_bounding_box(self):
+            return type(
+                "Box",
+                (),
+                {"get_extent": lambda self: np.array([0.1, 0.1, 0.1])},
+            )()
+
+    with pytest.raises(ValueError, match="too many disconnected"):
+        module.validate_export_mesh(FragmentedMesh())
+
+
+def test_validate_export_mesh_rejects_oversized_bounds() -> None:
+    module = load_markerless_scanner_module()
+
+    class OversizedMesh:
+        triangles = [object()] * 10
+
+        def cluster_connected_triangles(self):
+            return None, [10], [1.0]
+
+        def get_axis_aligned_bounding_box(self):
+            return type(
+                "Box",
+                (),
+                {"get_extent": lambda self: np.array([0.5, 0.1, 0.1])},
+            )()
+
+    with pytest.raises(ValueError, match="exceeds object envelope"):
+        module.validate_export_mesh(OversizedMesh())
