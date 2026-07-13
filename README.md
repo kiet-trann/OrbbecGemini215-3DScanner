@@ -86,6 +86,20 @@ Che do nhanh de tracking live vat nho o 25 cm, uu tien dat >=15 accepted updates
 C:\Users\TD-998\OrbbecGemini215-3DScanner\.venv\Scripts\python.exe scripts\13_markerless_tracking.py --backend opencv --tracking-width 240 --tracking-height 150 --min-depth-m 0.20 --max-depth-m 0.30 --print-every 0
 ```
 
+Chay scan 3D markerless live cho vat nho nhu hop sua dat tren ban. Giu camera khoang 25 cm,
+di chuyen cham quanh vat; cua so RGB nam ben trai, model TSDF nam ben phai. Nhan `Q` hoac `ESC`
+de dung va ghi mesh PLY vao `outputs/ply`:
+
+```powershell
+C:\Users\TD-998\OrbbecGemini215-3DScanner\.venv\Scripts\python.exe scripts\14_markerless_scanner.py --backend opencv --tracking-width 240 --tracking-height 150 --min-depth-m 0.20 --max-depth-m 0.30
+```
+
+Smoke test khong mo cua so va khong export mesh:
+
+```powershell
+C:\Users\TD-998\OrbbecGemini215-3DScanner\.venv\Scripts\python.exe scripts\14_markerless_scanner.py --headless --no-export --max-frames 120 --backend opencv --tracking-width 240 --tracking-height 150 --min-depth-m 0.20 --max-depth-m 0.30
+```
+
 Chay lai tracking tu session da record thi can truyen depth intrinsics cua session:
 
 ```powershell
