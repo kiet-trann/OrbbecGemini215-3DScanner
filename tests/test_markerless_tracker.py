@@ -143,6 +143,27 @@ def test_first_invalid_depth_frame_stays_initializing_without_previous_state() -
     assert len(keyframes.calls) == 1
 
 
+def test_first_low_coverage_depth_frame_stays_initializing_without_previous_state() -> None:
+    keyframes = RecordingKeyframes()
+    odometry = FakeOdometry([relative_translation(0.01)])
+    tracker = MarkerlessTracker(
+        intrinsics(),
+        depth_processor=FakeDepthProcessor([processed(0.1), processed()]),
+        odometry=odometry,
+        keyframes=keyframes,
+    )
+
+    first = tracker.process(packet(1, 100_000))
+    second = tracker.process(packet(2, 200_000))
+
+    assert first.state is TrackingState.INITIALIZING
+    assert not first.accepted
+    assert first.reason == "depth_valid_ratio_below_minimum"
+    assert second.accepted
+    assert odometry.calls == []
+    assert len(keyframes.calls) == 1
+
+
 def test_tracker_composes_only_accepted_motion_and_leaves_pose_unchanged_on_rejection() -> None:
     accepted_relative = relative_translation(0.02)
     rejected_relative = relative_translation(0.03)

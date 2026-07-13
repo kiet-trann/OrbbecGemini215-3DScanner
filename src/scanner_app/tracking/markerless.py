@@ -98,6 +98,16 @@ class MarkerlessTracker:
                 keyframe=False,
                 reason="depth_valid_ratio_zero",
             )
+        min_depth_valid_ratio = getattr(self.quality_gate, "min_depth_valid_ratio", 0.5)
+        if processed_depth.valid_ratio < min_depth_valid_ratio:
+            return TrackingResult(
+                state=TrackingState.INITIALIZING,
+                camera_to_world=np.eye(4, dtype=np.float64),
+                metrics=metrics,
+                accepted=False,
+                keyframe=False,
+                reason="depth_valid_ratio_below_minimum",
+            )
 
         camera_to_world = np.eye(4, dtype=np.float64)
         self._previous_packet = packet
