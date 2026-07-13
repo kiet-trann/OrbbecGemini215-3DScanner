@@ -37,12 +37,24 @@ def _snapshot_with_tracking(state: TrackingState) -> ScannerSnapshot:
 
 
 def test_lost_tracking_status_is_red_and_blocks_fusion() -> None:
-    status = status_from_snapshot(_snapshot_with_tracking(TrackingState.LOST))
+    snapshot = _snapshot_with_tracking(TrackingState.LOST)
+    status = status_from_snapshot(snapshot)
 
     assert status.tracking_text == "LOST"
     assert status.tracking_color == (1.0, 0.2, 0.2)
     assert status.guidance == "Return to the last accepted view"
     assert not status.integrating
+
+
+def test_status_line_includes_rejection_reason_and_quality_metrics() -> None:
+    from scanner_app.visualization.scanner_window import format_status_line
+
+    snapshot = _snapshot_with_tracking(TrackingState.LOST)
+    line = format_status_line(snapshot)
+
+    assert "reason=lost" in line
+    assert "fit=0.00" in line
+    assert "rmse=inf" in line
 
 
 def test_tracking_status_is_green_and_allows_fusion() -> None:

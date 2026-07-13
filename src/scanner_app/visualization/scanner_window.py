@@ -48,11 +48,16 @@ def status_from_snapshot(snapshot: ScannerSnapshot) -> ScannerStatus:
 def format_status_line(snapshot: ScannerSnapshot) -> str:
     status = status_from_snapshot(snapshot)
     guidance = f" | {status.guidance}" if status.guidance else ""
+    metrics = snapshot.tracking.metrics if snapshot.tracking is not None else None
+    quality = ""
+    if metrics is not None:
+        reason = snapshot.tracking.reason or "-"
+        quality = f" | reason={reason} | fit={metrics.fitness:.2f} | rmse={metrics.rmse_m:.4g}"
     return (
         f"{status.tracking_text} | capture={snapshot.capture_fps:.1f} FPS | "
         f"tracking={snapshot.tracking_fps:.1f} FPS | preview={snapshot.preview_fps:.1f} FPS | "
         f"depth={snapshot.depth_valid_ratio:.2f} | coverage={snapshot.coverage_ratio:.0%}"
-        f"{guidance}"
+        f"{quality}{guidance}"
     )
 
 
