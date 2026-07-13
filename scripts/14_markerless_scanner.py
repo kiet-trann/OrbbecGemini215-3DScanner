@@ -356,12 +356,34 @@ def export_mesh(mesh: Any, output_path: Path | None = None) -> Path | None:
     import open3d as o3d
 
     cleanup_mesh(mesh)
+    validate_export_mesh(mesh)
     output = (output_path or build_output_path()).resolve()
     output.parent.mkdir(parents=True, exist_ok=True)
     if not o3d.io.write_triangle_mesh(str(output), mesh):
         raise OrbbecFrameError(f"Failed to write markerless scan mesh: {output}")
     print(f"Saved markerless mesh {describe_mesh(mesh)} to: {output}")
     return output
+
+
+def validate_export_mesh(
+    mesh: Any,
+    *,
+    max_component_count: int = 3,
+    max_extent_m: float = 0.36,
+) -> None:
+    _labels, counts, _areas = mesh.cluster_connected_triangles()
+    component_count = len(counts)
+    if component_count > max_component_count:
+        raise ValueError(
+            f"Refusing to export mesh: too many disconnected components ({component_count})."
+        )
+
+    extent = np.asarray(mesh.get_axis_aligned_bounding_box().get_extent(), dtype=np.float64)
+    if np.any(extent > max_extent_m):
+        raise ValueError(
+            "Refusing to export mesh: bounding box exceeds object envelope "
+            f"({tuple(float(value) for value in extent)} m)."
+        )
 
 
 def _object_center_from_depth(args: argparse.Namespace):

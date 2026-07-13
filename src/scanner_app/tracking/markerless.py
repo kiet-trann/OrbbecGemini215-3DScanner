@@ -20,6 +20,7 @@ class MarkerlessTracker:
         odometry: RgbdOdometryAdapter | None = None,
         quality_gate: QualityGate | None = None,
         keyframes: KeyframeStore | None = None,
+        max_relocalization_keyframes: int = 12,
     ) -> None:
         self.intrinsics = intrinsics
         self.depth_processor = depth_processor if depth_processor is not None else DepthProcessor(0.20, 0.30)
@@ -29,10 +30,12 @@ class MarkerlessTracker:
             quality_gate if quality_gate is not None else QualityGate(min_depth_valid_ratio=0.01)
         )
         self.keyframes = keyframes if keyframes is not None else KeyframeStore()
+        self.max_relocalization_keyframes = int(max_relocalization_keyframes)
 
         self._previous_packet: SynchronizedFramePacket | None = None
         self._previous_depth: ProcessedDepth | None = None
         self._camera_to_world: np.ndarray | None = None
+        self._accepted_depth_by_sequence: dict[int, ProcessedDepth] = {}
 
     def process(self, packet: SynchronizedFramePacket) -> TrackingResult:
         current_depth = self.depth_processor.process(packet)
@@ -43,7 +46,7 @@ class MarkerlessTracker:
         assert self._camera_to_world is not None
 
         imu_rotation = self.imu_estimator.predict_rotation(packet.imu_samples)
-        estimate = self.odometry.estimate(
+        estimate = self._estimate_from_reference(
             self._previous_packet,
             self._previous_depth,
             packet,
@@ -52,6 +55,18 @@ class MarkerlessTracker:
         )
         metrics = _metrics_from_estimate(estimate.relative_transform, estimate)
         decision = self.quality_gate.evaluate(metrics, packet.depth_timestamp_us)
+        relocalized = False
+        if not decision.accepted:
+            relocalized_estimate = self._try_relocalize(packet, current_depth, imu_rotation)
+            if relocalized_estimate is not None:
+                reference_pose, estimate = relocalized_estimate
+                metrics = _metrics_from_estimate(estimate.relative_transform, estimate)
+                decision = self.quality_gate.evaluate(metrics, packet.depth_timestamp_us)
+                relocalized = decision.accepted
+            else:
+                reference_pose = self._camera_to_world
+        else:
+            reference_pose = self._camera_to_world
 
         if not decision.accepted:
             return TrackingResult(
@@ -63,12 +78,13 @@ class MarkerlessTracker:
                 reason=decision.reason,
             )
 
-        camera_to_world = self._camera_to_world @ np.linalg.inv(
+        camera_to_world = reference_pose @ np.linalg.inv(
             np.asarray(estimate.relative_transform, dtype=np.float64)
         )
         self._previous_packet = packet
         self._previous_depth = current_depth
         self._camera_to_world = camera_to_world
+        self._accepted_depth_by_sequence[packet.sequence] = current_depth
         keyframe = self.keyframes.add(packet, camera_to_world, metrics, accepted=True)
         return TrackingResult(
             state=decision.state,
@@ -76,8 +92,54 @@ class MarkerlessTracker:
             metrics=metrics,
             accepted=True,
             keyframe=keyframe,
-            reason=decision.reason,
+            reason="relocalized" if relocalized else decision.reason,
         )
+
+    def _estimate_from_reference(
+        self,
+        reference_packet: SynchronizedFramePacket,
+        reference_depth: ProcessedDepth,
+        packet: SynchronizedFramePacket,
+        current_depth: ProcessedDepth,
+        imu_rotation: np.ndarray,
+    ):
+        return self.odometry.estimate(
+            reference_packet,
+            reference_depth,
+            packet,
+            current_depth,
+            imu_rotation,
+        )
+
+    def _try_relocalize(
+        self,
+        packet: SynchronizedFramePacket,
+        current_depth: ProcessedDepth,
+        imu_rotation: np.ndarray,
+    ):
+        previous_sequence = None if self._previous_packet is None else self._previous_packet.sequence
+        candidates = list(reversed(getattr(self.keyframes, "keyframes", [])))
+        tested = 0
+        for keyframe in candidates:
+            if keyframe.packet.sequence == previous_sequence:
+                continue
+            reference_depth = self._accepted_depth_by_sequence.get(keyframe.packet.sequence)
+            if reference_depth is None:
+                continue
+            estimate = self._estimate_from_reference(
+                keyframe.packet,
+                reference_depth,
+                packet,
+                current_depth,
+                imu_rotation,
+            )
+            metrics = _metrics_from_estimate(estimate.relative_transform, estimate)
+            if self.quality_gate.metrics_rejection_reason(metrics) is None:
+                return keyframe.camera_to_world, estimate
+            tested += 1
+            if tested >= self.max_relocalization_keyframes:
+                break
+        return None
 
     def _initialize(
         self,
@@ -115,6 +177,7 @@ class MarkerlessTracker:
         self._previous_packet = packet
         self._previous_depth = processed_depth
         self._camera_to_world = camera_to_world
+        self._accepted_depth_by_sequence[packet.sequence] = processed_depth
         keyframe = self.keyframes.add(packet, camera_to_world, metrics, accepted=True)
         return TrackingResult(
             state=TrackingState.TRACKING,

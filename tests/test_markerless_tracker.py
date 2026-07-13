@@ -2,8 +2,9 @@ import numpy as np
 
 from scanner_app.camera.models import CameraIntrinsics, SynchronizedFramePacket
 from scanner_app.processing.depth_pipeline import ProcessedDepth
+from scanner_app.tracking.keyframes import KeyframeStore
 from scanner_app.tracking.markerless import MarkerlessTracker
-from scanner_app.tracking.models import TrackingState
+from scanner_app.tracking.models import TrackingMetrics, TrackingState
 from scanner_app.tracking.quality import GateDecision, QualityGate
 from scanner_app.tracking.rgbd_odometry import OdometryEstimate
 
@@ -73,6 +74,23 @@ class FakeOdometry:
         )
 
 
+class FlexibleOdometry:
+    def __init__(self, estimates: list[OdometryEstimate]) -> None:
+        self.estimates = estimates
+        self.calls = []
+
+    def estimate(
+        self,
+        previous_packet,
+        previous_depth,
+        current_packet,
+        current_depth,
+        imu_rotation,
+    ) -> OdometryEstimate:
+        self.calls.append((previous_packet, previous_depth, current_packet, current_depth, imu_rotation))
+        return self.estimates.pop(0)
+
+
 class ScriptedGate:
     def __init__(self, decisions: list[GateDecision]) -> None:
         self.decisions = decisions
@@ -100,6 +118,21 @@ def relative_translation(x_m: float) -> np.ndarray:
     transform = np.eye(4)
     transform[0, 3] = x_m
     return transform
+
+
+def estimate(
+    *,
+    x_m: float,
+    fitness: float = 0.8,
+    rmse_m: float = 0.001,
+    depth_valid_ratio: float = 1.0,
+) -> OdometryEstimate:
+    return OdometryEstimate(
+        relative_transform=relative_translation(x_m),
+        fitness=fitness,
+        rmse_m=rmse_m,
+        depth_valid_ratio=depth_valid_ratio,
+    )
 
 
 def test_first_valid_frame_initializes_identity_pose_and_keyframe() -> None:
@@ -202,3 +235,32 @@ def test_tracker_composes_only_accepted_motion_and_leaves_pose_unchanged_on_reje
     assert len(keyframes.calls) == 2
     assert odometry.calls[1][0].sequence == 2
     assert imu.calls == 2
+
+
+def test_tracker_relocalizes_against_older_keyframe_when_previous_frame_fails() -> None:
+    keyframes = KeyframeStore(translation_threshold_m=0.001)
+    odometry = FlexibleOdometry(
+        [
+            estimate(x_m=0.02),
+            estimate(x_m=0.03, fitness=0.0, rmse_m=float("inf")),
+            estimate(x_m=0.04),
+        ]
+    )
+    tracker = MarkerlessTracker(
+        intrinsics(),
+        depth_processor=FakeDepthProcessor([processed(), processed(), processed()]),
+        imu_estimator=FakeImuEstimator(),
+        odometry=odometry,
+        quality_gate=QualityGate(min_depth_valid_ratio=0.01),
+        keyframes=keyframes,
+    )
+
+    tracker.process(packet(1, 100_000))
+    tracker.process(packet(2, 200_000))
+    recovered = tracker.process(packet(3, 300_000))
+
+    assert recovered.accepted
+    assert recovered.state is TrackingState.TRACKING
+    assert recovered.reason == "relocalized"
+    np.testing.assert_allclose(recovered.camera_to_world[:3, 3], [-0.04, 0.0, 0.0])
+    assert [call[0].sequence for call in odometry.calls] == [1, 2, 1]

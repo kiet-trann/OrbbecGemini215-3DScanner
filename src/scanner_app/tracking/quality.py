@@ -36,11 +36,17 @@ class QualityGate:
         state = TrackingState.LOST if self.rejected_count >= self.lost_after_rejections else TrackingState.DEGRADED
         return GateDecision(False, state, reason)
 
+    def metrics_rejection_reason(self, metrics: TrackingMetrics) -> str | None:
+        return self._metrics_rejection_reason(metrics)
+
     def _rejection_reason(self, metrics: TrackingMetrics, timestamp_us: int) -> str | None:
         if self._last_timestamp_us is not None and timestamp_us <= self._last_timestamp_us:
             return "timestamp_not_increasing"
         if self._last_timestamp_us is not None and timestamp_us - self._last_timestamp_us > self.max_timestamp_gap_us:
             return "timestamp_gap_above_maximum"
+        return self._metrics_rejection_reason(metrics)
+
+    def _metrics_rejection_reason(self, metrics: TrackingMetrics) -> str | None:
         if metrics.fitness < self.min_fitness:
             return "fitness_below_minimum"
         if metrics.rmse_m > self.max_rmse_m:
