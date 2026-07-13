@@ -29,6 +29,17 @@ def test_quality_gate_accepts_valid_metrics_and_requires_increasing_timestamps()
     assert repeated.reason == "timestamp_not_increasing"
 
 
+def test_quality_gate_rejects_timestamp_gap_above_200ms() -> None:
+    gate = QualityGate()
+
+    assert gate.evaluate(metrics(), timestamp_us=100_000).accepted
+    result = gate.evaluate(metrics(), timestamp_us=301_000)
+
+    assert not result.accepted
+    assert result.state is TrackingState.DEGRADED
+    assert result.reason == "timestamp_gap_above_maximum"
+
+
 def test_quality_gate_rejects_each_threshold_with_a_specific_reason() -> None:
     cases = {
         "fitness": "fitness_below_minimum",

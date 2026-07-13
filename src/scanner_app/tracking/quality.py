@@ -4,9 +4,15 @@ from scanner_app.tracking.models import TrackingMetrics, TrackingState
 
 
 class QualityGate:
-    def __init__(self, min_depth_valid_ratio: float = 0.5, lost_after_rejections: int = 3) -> None:
+    def __init__(
+        self,
+        min_depth_valid_ratio: float = 0.5,
+        lost_after_rejections: int = 3,
+        max_timestamp_gap_us: int = 200_000,
+    ) -> None:
         self.min_depth_valid_ratio = min_depth_valid_ratio
         self.lost_after_rejections = lost_after_rejections
+        self.max_timestamp_gap_us = max_timestamp_gap_us
         self.rejected_count = 0
         self._last_timestamp_us: int | None = None
 
@@ -23,6 +29,8 @@ class QualityGate:
     def _rejection_reason(self, metrics: TrackingMetrics, timestamp_us: int) -> str | None:
         if self._last_timestamp_us is not None and timestamp_us <= self._last_timestamp_us:
             return "timestamp_not_increasing"
+        if self._last_timestamp_us is not None and timestamp_us - self._last_timestamp_us > self.max_timestamp_gap_us:
+            return "timestamp_gap_above_maximum"
         if metrics.fitness < 0.35:
             return "fitness_below_minimum"
         if metrics.rmse_m > 0.004:
