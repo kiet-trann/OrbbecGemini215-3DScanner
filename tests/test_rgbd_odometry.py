@@ -123,8 +123,9 @@ def test_adapter_rejects_sparse_depth_before_backend_call() -> None:
         CameraIntrinsics(800, 600, 640, 400, 1280, 800),
         backend=backend,
     )
-    color = np.zeros((2, 2, 3), dtype=np.uint8)
-    sparse_depth = np.array([[0.25, 0.0], [0.0, 0.0]], dtype=np.float32)
+    color = np.zeros((20, 20, 3), dtype=np.uint8)
+    sparse_depth = np.zeros((20, 20), dtype=np.float32)
+    sparse_depth[0, 0] = 0.25
 
     estimate = adapter.estimate(
         packet(color),
@@ -137,7 +138,7 @@ def test_adapter_rejects_sparse_depth_before_backend_call() -> None:
     assert backend.calls == []
     assert estimate.fitness == 0.0
     assert np.isinf(estimate.rmse_m)
-    assert estimate.depth_valid_ratio == 0.25
+    assert estimate.depth_valid_ratio == 0.0025
 
 
 def test_importing_adapter_does_not_import_open3d_until_production_backend_is_used() -> None:

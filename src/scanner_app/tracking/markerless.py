@@ -25,7 +25,9 @@ class MarkerlessTracker:
         self.depth_processor = depth_processor if depth_processor is not None else DepthProcessor(0.20, 0.30)
         self.imu_estimator = imu_estimator if imu_estimator is not None else ImuEstimator()
         self.odometry = odometry if odometry is not None else RgbdOdometryAdapter(intrinsics)
-        self.quality_gate = quality_gate if quality_gate is not None else QualityGate()
+        self.quality_gate = (
+            quality_gate if quality_gate is not None else QualityGate(min_depth_valid_ratio=0.01)
+        )
         self.keyframes = keyframes if keyframes is not None else KeyframeStore()
 
         self._previous_packet: SynchronizedFramePacket | None = None

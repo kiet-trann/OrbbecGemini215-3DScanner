@@ -54,13 +54,13 @@ class RgbdOdometryAdapter:
         backend: RgbdOdometryBackend | None = None,
         tracking_width: int = 640,
         tracking_height: int = 400,
-        min_backend_depth_valid_ratio: float = 0.5,
+        min_backend_valid_pixels: int = 1_000,
     ) -> None:
         self.intrinsics = scale_tracking_intrinsics(intrinsics, tracking_width, tracking_height)
         self._backend = backend
         self.tracking_width = int(tracking_width)
         self.tracking_height = int(tracking_height)
-        self.min_backend_depth_valid_ratio = float(min_backend_depth_valid_ratio)
+        self.min_backend_valid_pixels = int(min_backend_valid_pixels)
 
     def estimate(
         self,
@@ -78,11 +78,12 @@ class RgbdOdometryAdapter:
         previous_depth_m = self._resize_depth_m(previous_depth.depth_m)
         current_depth_m = self._resize_depth_m(current_depth.depth_m)
         depth_valid_ratio = float(np.mean(current_depth_m > 0.0))
-        previous_depth_valid_ratio = float(np.mean(previous_depth_m > 0.0))
+        previous_valid_pixels = int(np.count_nonzero(previous_depth_m > 0.0))
+        current_valid_pixels = int(np.count_nonzero(current_depth_m > 0.0))
 
         if (
-            previous_depth_valid_ratio < self.min_backend_depth_valid_ratio
-            or depth_valid_ratio < self.min_backend_depth_valid_ratio
+            previous_valid_pixels < self.min_backend_valid_pixels
+            or current_valid_pixels < self.min_backend_valid_pixels
         ):
             initial_transform = np.asarray(initial_transform, dtype=np.float64)
             return OdometryEstimate(
