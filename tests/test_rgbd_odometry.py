@@ -6,7 +6,9 @@ from scanner_app.camera.models import CameraIntrinsics, SynchronizedFramePacket
 from scanner_app.processing.depth_pipeline import ProcessedDepth
 from scanner_app.tracking.rgbd_odometry import (
     OdometryEstimate,
+    OpenCvRgbdOdometryBackend,
     RgbdOdometryAdapter,
+    estimate_rigid_transform_3d,
     scale_tracking_intrinsics,
 )
 
@@ -139,6 +141,45 @@ def test_adapter_rejects_sparse_depth_before_backend_call() -> None:
     assert estimate.fitness == 0.0
     assert np.isinf(estimate.rmse_m)
     assert estimate.depth_valid_ratio == 0.0025
+
+
+def test_estimate_rigid_transform_3d_recovers_translation_and_rmse() -> None:
+    source = np.array(
+        [
+            [0.0, 0.0, 0.25],
+            [0.02, 0.0, 0.25],
+            [0.0, 0.02, 0.25],
+            [0.02, 0.02, 0.25],
+        ],
+        dtype=np.float64,
+    )
+    target = source + np.array([0.01, -0.005, 0.002])
+
+    transform, rmse = estimate_rigid_transform_3d(source, target)
+
+    np.testing.assert_allclose(transform[:3, :3], np.eye(3), atol=1e-9)
+    np.testing.assert_allclose(transform[:3, 3], [0.01, -0.005, 0.002], atol=1e-9)
+    assert rmse < 1e-12
+
+
+def test_opencv_backend_returns_failed_estimate_when_features_are_missing() -> None:
+    backend = OpenCvRgbdOdometryBackend(min_matches=6)
+    color = np.zeros((40, 60, 3), dtype=np.uint8)
+    depth = np.full((40, 60), 0.25, dtype=np.float32)
+    initial = np.eye(4)
+
+    estimate = backend.estimate(
+        color,
+        depth,
+        color,
+        depth,
+        CameraIntrinsics(50, 50, 30, 20, 60, 40),
+        initial,
+    )
+
+    assert estimate.fitness == 0.0
+    assert np.isinf(estimate.rmse_m)
+    np.testing.assert_allclose(estimate.relative_transform, initial)
 
 
 def test_importing_adapter_does_not_import_open3d_until_production_backend_is_used() -> None:

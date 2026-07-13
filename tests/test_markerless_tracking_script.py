@@ -130,6 +130,8 @@ def test_build_tracker_uses_cli_depth_range() -> None:
             "--disable-icp",
             "--print-every",
             "0",
+            "--backend",
+            "opencv",
         ]
     )
 
@@ -141,6 +143,7 @@ def test_build_tracker_uses_cli_depth_range() -> None:
     assert tracker.odometry.tracking_width == 320
     assert tracker.odometry.tracking_height == 200
     assert not tracker.odometry.enable_icp
+    assert tracker.odometry._backend.__class__.__name__ == "OpenCvRgbdOdometryBackend"
     assert args.print_every == 0
 
 

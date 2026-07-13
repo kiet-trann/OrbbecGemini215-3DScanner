@@ -14,7 +14,7 @@ from scanner_app.recording.session import SessionReplay
 from scanner_app.tracking.markerless import MarkerlessTracker
 from scanner_app.tracking.models import TrackingResult
 from scanner_app.tracking.quality import QualityGate
-from scanner_app.tracking.rgbd_odometry import RgbdOdometryAdapter
+from scanner_app.tracking.rgbd_odometry import OpenCvRgbdOdometryBackend, RgbdOdometryAdapter
 
 
 def build_argument_parser() -> argparse.ArgumentParser:
@@ -29,6 +29,7 @@ def build_argument_parser() -> argparse.ArgumentParser:
     parser.add_argument("--tracking-height", type=int, default=400)
     parser.add_argument("--disable-icp", action="store_true")
     parser.add_argument("--print-every", type=int, default=1)
+    parser.add_argument("--backend", choices=("open3d", "opencv"), default="open3d")
     parser.add_argument("--record-accepted", action="store_true", help="Keep accepted keyframes in tracker state.")
     parser.add_argument("--no-live", action="store_true", help="Require --replay instead of opening live capture.")
     parser.add_argument("--intrinsics-fx", type=float)
@@ -125,12 +126,14 @@ def build_tracker(
     args: argparse.Namespace,
     tracker_factory=MarkerlessTracker,
 ) -> MarkerlessTracker:
+    backend = OpenCvRgbdOdometryBackend() if args.backend == "opencv" else None
     return tracker_factory(
         intrinsics,
         depth_processor=DepthProcessor(args.min_depth_m, args.max_depth_m),
         quality_gate=QualityGate(min_depth_valid_ratio=args.min_depth_valid_ratio),
         odometry=RgbdOdometryAdapter(
             intrinsics,
+            backend=backend,
             tracking_width=args.tracking_width,
             tracking_height=args.tracking_height,
             enable_icp=not args.disable_icp,
