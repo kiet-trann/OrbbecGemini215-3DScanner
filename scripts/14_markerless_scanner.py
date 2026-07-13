@@ -44,10 +44,14 @@ def build_argument_parser() -> argparse.ArgumentParser:
     parser.add_argument("--min-depth-m", type=float, default=0.20)
     parser.add_argument("--max-depth-m", type=float, default=0.30)
     parser.add_argument("--tracking-min-depth-m", type=float, default=0.20)
-    parser.add_argument("--tracking-max-depth-m", type=float, default=0.45)
+    parser.add_argument("--tracking-max-depth-m", type=float, default=0.50)
     parser.add_argument("--min-depth-valid-ratio", type=float, default=0.01)
     parser.add_argument("--max-rmse-m", type=float, default=0.006)
+    parser.add_argument("--max-timestamp-gap-ms", type=int, default=500)
+    parser.add_argument("--lost-after-rejections", type=int, default=10)
     parser.add_argument("--backend", choices=("opencv", "open3d"), default="opencv")
+    parser.add_argument("--opencv-max-features", type=int, default=1200)
+    parser.add_argument("--opencv-min-matches", type=int, default=6)
     parser.add_argument("--tracking-width", type=int, default=240)
     parser.add_argument("--tracking-height", type=int, default=150)
     parser.add_argument("--disable-icp", action="store_true")
@@ -79,13 +83,22 @@ def build_tracker(
     args: argparse.Namespace,
     tracker_factory=MarkerlessTracker,
 ) -> MarkerlessTracker:
-    backend = OpenCvRgbdOdometryBackend() if args.backend == "opencv" else None
+    backend = (
+        OpenCvRgbdOdometryBackend(
+            max_features=args.opencv_max_features,
+            min_matches=args.opencv_min_matches,
+        )
+        if args.backend == "opencv"
+        else None
+    )
     return tracker_factory(
         intrinsics,
         depth_processor=DepthProcessor(args.tracking_min_depth_m, args.tracking_max_depth_m),
         quality_gate=QualityGate(
             min_depth_valid_ratio=args.min_depth_valid_ratio,
             max_rmse_m=args.max_rmse_m,
+            max_timestamp_gap_us=args.max_timestamp_gap_ms * 1000,
+            lost_after_rejections=args.lost_after_rejections,
         ),
         odometry=RgbdOdometryAdapter(
             intrinsics,
