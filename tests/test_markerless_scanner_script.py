@@ -32,6 +32,8 @@ def test_parser_uses_validated_25cm_live_scan_defaults() -> None:
     assert args.tracking_height == 150
     assert args.min_depth_m == 0.20
     assert args.max_depth_m == 0.30
+    assert args.tracking_min_depth_m == 0.20
+    assert args.tracking_max_depth_m == 0.45
     assert args.voxel_length_m == 0.0015
     assert args.sdf_trunc_m == 0.006
     assert args.live_fusion_width == 320
@@ -51,6 +53,27 @@ def test_build_tracker_uses_live_scanner_rmse_limit() -> None:
     tracker = module.build_tracker(CameraIntrinsics(500, 500, 1, 1, 2, 2), args)
 
     assert tracker.quality_gate.max_rmse_m == 0.007
+
+
+def test_build_tracker_uses_wider_tracking_depth_than_fusion_range() -> None:
+    module = load_markerless_scanner_module()
+    args = module.build_argument_parser().parse_args(
+        [
+            "--headless",
+            "--no-export",
+            "--min-depth-m",
+            "0.20",
+            "--max-depth-m",
+            "0.30",
+            "--tracking-max-depth-m",
+            "0.50",
+        ]
+    )
+
+    tracker = module.build_tracker(CameraIntrinsics(500, 500, 1, 1, 2, 2), args)
+
+    assert tracker.depth_processor.min_depth_m == 0.20
+    assert tracker.depth_processor.max_depth_m == 0.50
 
 
 def test_live_scan_integrates_only_new_accepted_keyframes_and_stops_camera() -> None:
@@ -149,6 +172,8 @@ def test_live_scan_integrates_only_new_accepted_keyframes_and_stops_camera() -> 
     assert summary.integrated_keyframes == 2
     assert len(created_fusions[0].integrated) == 2
     assert created_fusions[0].kwargs["voxel_length_m"] == 0.0015
+    assert created_fusions[0].kwargs["min_depth_m"] == 0.20
+    assert created_fusions[0].kwargs["max_depth_m"] == 0.30
     assert created_fusions[0].kwargs["integration_width"] == 320
     assert created_fusions[0].kwargs["integration_height"] == 200
     np.testing.assert_allclose(created_fusions[0].kwargs["roi_min"], [-0.175, -0.175, 0.075])

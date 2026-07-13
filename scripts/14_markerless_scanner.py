@@ -43,6 +43,8 @@ def build_argument_parser() -> argparse.ArgumentParser:
     parser.add_argument("--warmup-frames", type=int, default=30)
     parser.add_argument("--min-depth-m", type=float, default=0.20)
     parser.add_argument("--max-depth-m", type=float, default=0.30)
+    parser.add_argument("--tracking-min-depth-m", type=float, default=0.20)
+    parser.add_argument("--tracking-max-depth-m", type=float, default=0.45)
     parser.add_argument("--min-depth-valid-ratio", type=float, default=0.01)
     parser.add_argument("--max-rmse-m", type=float, default=0.006)
     parser.add_argument("--backend", choices=("opencv", "open3d"), default="opencv")
@@ -80,7 +82,7 @@ def build_tracker(
     backend = OpenCvRgbdOdometryBackend() if args.backend == "opencv" else None
     return tracker_factory(
         intrinsics,
-        depth_processor=DepthProcessor(args.min_depth_m, args.max_depth_m),
+        depth_processor=DepthProcessor(args.tracking_min_depth_m, args.tracking_max_depth_m),
         quality_gate=QualityGate(
             min_depth_valid_ratio=args.min_depth_valid_ratio,
             max_rmse_m=args.max_rmse_m,
@@ -218,7 +220,7 @@ def run_live_scan(
     capture = capture_factory(
         capture_config=CaptureConfig(
             depth_min_m=args.min_depth_m,
-            depth_max_m=args.max_depth_m,
+            depth_max_m=args.tracking_max_depth_m,
         ),
         align_to_depth=True,
     )
