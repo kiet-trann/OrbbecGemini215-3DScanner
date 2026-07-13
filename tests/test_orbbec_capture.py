@@ -66,15 +66,25 @@ class FakeFrameSet:
         self,
         color_frame: FakeColorFrame | None | object = _DEFAULT_COLOR_FRAME,
         depth_frame: FakeDepthFrame | None = None,
+        gyro_frame=None,
+        accel_frame=None,
     ) -> None:
         self.color_frame = FakeColorFrame() if color_frame is _DEFAULT_COLOR_FRAME else color_frame
         self.depth_frame = FakeDepthFrame() if depth_frame is None else depth_frame
+        self.gyro_frame = gyro_frame
+        self.accel_frame = accel_frame
 
     def get_color_frame(self) -> FakeColorFrame | None:
         return self.color_frame if self.color_frame is None else self.color_frame
 
     def get_depth_frame(self) -> FakeDepthFrame:
         return self.depth_frame
+
+    def get_gyro_frame(self):
+        return self.gyro_frame
+
+    def get_accel_frame(self):
+        return self.accel_frame
 
 
 class FakeIntrinsic:
@@ -106,9 +116,15 @@ class FakePipeline:
         self.color_profiles = color_profiles or FakeVideoProfileList("color-profile")
         self.frame_sets = [FakeFrameSet()]
 
-    def start(self, config=None) -> None:
+    def start(self, config=None, callback=None) -> None:
         self.started = True
         self.start_config = config
+        self.callback = callback
+
+    def emit_callback(self, frames) -> None:
+        if self.callback is None:
+            raise AssertionError("Pipeline has not been started with a callback.")
+        self.callback(frames)
 
     def get_stream_profile_list(self, sensor_type: str) -> "FakeVideoProfileList":
         if sensor_type == "depth":
@@ -151,18 +167,25 @@ class FakeSdk:
         Y16 = "y16"
         RGB = "rgb"
 
+    class OBGyroSampleRate:
+        SAMPLE_RATE_200_HZ = "200-hz"
+
     def __init__(self) -> None:
         self.depth_profiles = FakeVideoProfileList("depth-profile")
         self.color_profiles = FakeVideoProfileList("color-profile")
         self.pipeline = FakePipeline(self.depth_profiles, self.color_profiles)
+        self.imu_pipeline = FakePipeline()
+        self._pipeline_requests = 0
         self.config = FakeConfig()
+        self.imu_config = FakeConfig()
         self.align_filter = None
 
     def Pipeline(self) -> FakePipeline:
-        return self.pipeline
+        self._pipeline_requests += 1
+        return self.pipeline if self._pipeline_requests == 1 else self.imu_pipeline
 
     def Config(self):
-        return self.config
+        return self.config if self._pipeline_requests <= 1 else self.imu_config
 
     def AlignFilter(self, align_to_stream):
         self.align_filter = FakeAlignFilter(align_to_stream)
@@ -188,10 +211,8 @@ class MissingSensorTypeSdk(FakeSdk):
     OBSensorType = None
 
 
-class MissingImuSensorTypeSdk(FakeSdk):
-    class OBSensorType:
-        DEPTH_SENSOR = "depth"
-        COLOR_SENSOR = "color"
+class MissingImuRateSdk(FakeSdk):
+    OBGyroSampleRate = None
 
 
 class MissingDepthFormatSdk(FakeSdk):
@@ -423,12 +444,20 @@ class FakeConfig:
     def __init__(self) -> None:
         self.enabled_profiles = []
         self.frame_aggregate_output_mode = None
+        self.accel_sample_rate = None
+        self.gyro_sample_rate = None
 
     def enable_stream(self, profile) -> None:
         self.enabled_profiles.append(profile)
 
     def set_frame_aggregate_output_mode(self, mode) -> None:
         self.frame_aggregate_output_mode = mode
+
+    def enable_accel_stream(self, sample_rate=None) -> None:
+        self.accel_sample_rate = sample_rate
+
+    def enable_gyro_stream(self, sample_rate=None) -> None:
+        self.gyro_sample_rate = sample_rate
 
 
 class FailingPipeline(FakePipeline):
@@ -538,8 +567,8 @@ class OrbbecCaptureTests(unittest.TestCase):
         with self.assertRaisesRegex(OrbbecCameraError, "OBSensorType"):
             capture.start()
 
-    def test_start_requires_sdk_imu_sensor_types(self) -> None:
-        capture = OrbbecCapture(sdk_module=MissingImuSensorTypeSdk())
+    def test_start_requires_sdk_imu_rate_api(self) -> None:
+        capture = OrbbecCapture(sdk_module=MissingImuRateSdk())
 
         with self.assertRaisesRegex(OrbbecCameraError, "IMU"):
             capture.start()
@@ -605,7 +634,7 @@ class OrbbecCaptureTests(unittest.TestCase):
         self.assertEqual(intrinsics.fx, 500.0)
         self.assertEqual(capture.depth_scale(), 0.5)
 
-    def test_start_starts_and_stop_stops_imu_sensors_at_configured_rate(self) -> None:
+    def test_start_uses_a_separate_imu_pipeline_at_the_configured_rate(self) -> None:
         sdk = FakeSdk()
         capture = OrbbecCapture(
             sdk_module=sdk,
@@ -614,12 +643,11 @@ class OrbbecCaptureTests(unittest.TestCase):
         )
 
         capture.start()
+        self.assertTrue(sdk.imu_pipeline.started)
+        self.assertEqual(sdk.imu_config.gyro_sample_rate, "200-hz")
+        self.assertEqual(sdk.imu_config.accel_sample_rate, "200-hz")
         capture.stop()
-
-        self.assertEqual(sdk.pipeline.device.gyro_sensor.started_rate_hz, 200)
-        self.assertEqual(sdk.pipeline.device.accel_sensor.started_rate_hz, 200)
-        self.assertTrue(sdk.pipeline.device.gyro_sensor.stopped)
-        self.assertTrue(sdk.pipeline.device.accel_sensor.stopped)
+        self.assertTrue(sdk.imu_pipeline.stopped)
 
     def test_read_packet_uses_real_timestamps_imu_samples_and_sequence(self) -> None:
         sdk = FakeSdk()
@@ -635,9 +663,11 @@ class OrbbecCaptureTests(unittest.TestCase):
         ]
         capture = OrbbecCapture(sdk_module=sdk, color_frame_converter=lambda frame: frame.data)
         capture.start()
-        sdk.pipeline.device.gyro_sensor.emit(FakeImuFrame(1.0, 2.0, 3.0, 19_995))
-        sdk.pipeline.device.accel_sensor.emit(FakeImuFrame(0.1, 0.2, 0.3, 20_000))
-        sdk.pipeline.device.gyro_sensor.emit(FakeImuFrame(4.0, 5.0, 6.0, 21_000))
+        sdk.imu_pipeline.emit_callback(FakeFrameSet(
+            gyro_frame=FakeImuFrame(1.0, 2.0, 3.0, 19_995),
+            accel_frame=FakeImuFrame(0.1, 0.2, 0.3, 20_000),
+        ))
+        sdk.imu_pipeline.emit_callback(FakeFrameSet(gyro_frame=FakeImuFrame(4.0, 5.0, 6.0, 21_000)))
 
         first = capture.read_packet()
         second = capture.read_packet()
