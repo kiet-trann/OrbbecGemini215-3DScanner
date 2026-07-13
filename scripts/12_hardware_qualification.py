@@ -154,7 +154,7 @@ def collect_static_samples(
         distance_frames = 0
         distance_valid_pixels = 0
         distance_total_pixels = 0
-        distance_noise_mm: list[np.ndarray] = []
+        distance_depths: list[np.ndarray] = []
         started = time.perf_counter()
         deadline = started + max(0.0, duration_s)
         while time.perf_counter() < deadline:
@@ -174,14 +174,16 @@ def collect_static_samples(
             distance_frames += 1
             imu_samples.extend(packet.imu_samples)
 
-            if valid_depth.size:
-                frame_median_m = float(np.median(valid_depth))
-                frame_noise_mm = np.abs(valid_depth - frame_median_m) * 1000.0
-                noise_mm.append(frame_noise_mm)
-                distance_noise_mm.append(frame_noise_mm)
+            temporal_depth = np.where(valid_roi_mask, processed.depth_m, np.nan).astype(
+                np.float32,
+                copy=False,
+            )
+            distance_depths.append(temporal_depth)
 
         capture_seconds += time.perf_counter() - started
-        distance_noise = concatenate_noise(distance_noise_mm)
+        distance_noise = temporal_noise_mm(distance_depths)
+        if distance_noise.size:
+            noise_mm.append(distance_noise)
         summaries.append(
             CaptureSummary(
                 distance_m=distance_m,
@@ -218,6 +220,23 @@ def concatenate_noise(values: list[np.ndarray]) -> np.ndarray:
     if not values:
         return np.array([], dtype=np.float32)
     return np.concatenate(values).astype(np.float32, copy=False)
+
+
+def temporal_noise_mm(depth_frames_m: list[np.ndarray]) -> np.ndarray:
+    if len(depth_frames_m) < 2:
+        return np.array([], dtype=np.float32)
+
+    stack = np.stack(depth_frames_m).astype(np.float32, copy=False)
+    samples_by_pixel = stack.reshape(stack.shape[0], -1)
+    finite = np.isfinite(samples_by_pixel)
+    enough_samples = np.count_nonzero(finite, axis=0) >= 2
+    if not np.any(enough_samples):
+        return np.array([], dtype=np.float32)
+
+    selected = samples_by_pixel[:, enough_samples]
+    medians_m = np.nanmedian(selected, axis=0)
+    deviations_mm = np.abs(selected - medians_m) * 1000.0
+    return deviations_mm[np.isfinite(deviations_mm)].astype(np.float32, copy=False)
 
 
 def percentile_or_inf(values: np.ndarray, percentile: float) -> float:

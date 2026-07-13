@@ -5,6 +5,8 @@ from pathlib import Path
 import sys
 import unittest
 
+import numpy as np
+
 
 def load_hardware_qualification_script():
     project_root = Path(__file__).resolve().parents[1]
@@ -80,6 +82,17 @@ class HardwareQualificationScriptTests(unittest.TestCase):
         self.assertEqual(payload["metrics"]["object_valid_ratio"], 0.70)
         self.assertEqual(payload["metrics"]["median_noise_mm"], 1.0)
         self.assertEqual(payload["metrics"]["p90_noise_mm"], 2.0)
+
+    def test_temporal_noise_uses_per_pixel_time_variation_not_spatial_shape(self) -> None:
+        script = load_hardware_qualification_script()
+        frames = [
+            np.array([[0.30, 0.40], [np.nan, np.nan]], dtype=np.float32),
+            np.array([[0.301, 0.401], [np.nan, np.nan]], dtype=np.float32),
+        ]
+
+        noise_mm = script.temporal_noise_mm(frames)
+
+        np.testing.assert_allclose(noise_mm, np.full(4, 0.5, dtype=np.float32), atol=0.0001)
 
 
 if __name__ == "__main__":
