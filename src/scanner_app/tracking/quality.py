@@ -22,6 +22,8 @@ class QualityGate:
             self._last_timestamp_us = timestamp_us
             self.rejected_count = 0
             return GateDecision(True, TrackingState.TRACKING, None)
+        if reason == "timestamp_gap_above_maximum":
+            self._last_timestamp_us = timestamp_us
         self.rejected_count += 1
         state = TrackingState.LOST if self.rejected_count >= self.lost_after_rejections else TrackingState.DEGRADED
         return GateDecision(False, state, reason)

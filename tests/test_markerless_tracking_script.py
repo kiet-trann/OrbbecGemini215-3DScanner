@@ -93,10 +93,44 @@ def test_result_to_json_emits_tracking_metrics_keyframe_and_pose() -> None:
     assert payload["pose"][0][3] == -0.02
 
 
+def test_tracking_summary_reports_accepted_update_rate() -> None:
+    module = load_markerless_tracking_module()
+    summary = module.TrackingSummary()
+    pose = np.eye(4)
+    result = TrackingResult(
+        state=TrackingState.TRACKING,
+        camera_to_world=pose,
+        metrics=TrackingMetrics(1.0, 0.0, 0.0, 0.0, 0.7),
+        accepted=True,
+        keyframe=False,
+    )
+
+    summary.update(100_000, result)
+    summary.update(300_000, result)
+
+    payload = summary.to_json()
+
+    assert payload["frames"] == 2
+    assert payload["accepted"] == 2
+    assert payload["accepted_updates_per_s"] == 5.0
+
+
 def test_build_tracker_uses_cli_depth_range() -> None:
     module = load_markerless_tracking_module()
     args = module.build_argument_parser().parse_args(
-        ["--min-depth-m", "0.15", "--max-depth-m", "0.50"]
+        [
+            "--min-depth-m",
+            "0.15",
+            "--max-depth-m",
+            "0.50",
+            "--tracking-width",
+            "320",
+            "--tracking-height",
+            "200",
+            "--disable-icp",
+            "--print-every",
+            "0",
+        ]
     )
 
     tracker = module.build_tracker(CameraIntrinsics(500, 500, 1, 1, 2, 2), args)
@@ -104,6 +138,10 @@ def test_build_tracker_uses_cli_depth_range() -> None:
     assert tracker.depth_processor.min_depth_m == 0.15
     assert tracker.depth_processor.max_depth_m == 0.50
     assert tracker.quality_gate.min_depth_valid_ratio == 0.01
+    assert tracker.odometry.tracking_width == 320
+    assert tracker.odometry.tracking_height == 200
+    assert not tracker.odometry.enable_icp
+    assert args.print_every == 0
 
 
 def test_live_run_stops_camera_when_frame_limit_is_reached(capsys) -> None:

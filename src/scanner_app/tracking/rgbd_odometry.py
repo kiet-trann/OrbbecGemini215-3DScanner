@@ -55,12 +55,14 @@ class RgbdOdometryAdapter:
         tracking_width: int = 640,
         tracking_height: int = 400,
         min_backend_valid_pixels: int = 1_000,
+        enable_icp: bool = True,
     ) -> None:
         self.intrinsics = scale_tracking_intrinsics(intrinsics, tracking_width, tracking_height)
         self._backend = backend
         self.tracking_width = int(tracking_width)
         self.tracking_height = int(tracking_height)
         self.min_backend_valid_pixels = int(min_backend_valid_pixels)
+        self.enable_icp = bool(enable_icp)
 
     def estimate(
         self,
@@ -110,7 +112,7 @@ class RgbdOdometryAdapter:
 
     def _get_backend(self) -> RgbdOdometryBackend:
         if self._backend is None:
-            self._backend = Open3dRgbdOdometryBackend()
+            self._backend = Open3dRgbdOdometryBackend(enable_icp=self.enable_icp)
         return self._backend
 
     def _resize_color_bgr_to_rgb(self, color_bgr: np.ndarray) -> np.ndarray:
@@ -130,10 +132,11 @@ class RgbdOdometryAdapter:
 
 
 class Open3dRgbdOdometryBackend:
-    def __init__(self) -> None:
+    def __init__(self, enable_icp: bool = True) -> None:
         import open3d as o3d
 
         self._o3d = o3d
+        self.enable_icp = bool(enable_icp)
 
     def estimate(
         self,
@@ -160,13 +163,17 @@ class Open3dRgbdOdometryBackend:
         if not success:
             transform = np.asarray(initial_transform, dtype=np.float64)
 
-        source_cloud = o3d.geometry.PointCloud.create_from_rgbd_image(source_rgbd, camera)
-        target_cloud = o3d.geometry.PointCloud.create_from_rgbd_image(target_rgbd, camera)
-        transform, fitness, rmse_m = self._refine_with_point_to_plane_icp(
-            source_cloud,
-            target_cloud,
-            np.asarray(transform, dtype=np.float64),
-        )
+        if self.enable_icp:
+            source_cloud = o3d.geometry.PointCloud.create_from_rgbd_image(source_rgbd, camera)
+            target_cloud = o3d.geometry.PointCloud.create_from_rgbd_image(target_rgbd, camera)
+            transform, fitness, rmse_m = self._refine_with_point_to_plane_icp(
+                source_cloud,
+                target_cloud,
+                np.asarray(transform, dtype=np.float64),
+            )
+        else:
+            fitness = 1.0 if success else 0.0
+            rmse_m = 0.0 if success else float("inf")
         return OdometryEstimate(
             relative_transform=transform,
             fitness=fitness,

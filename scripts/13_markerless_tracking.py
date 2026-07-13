@@ -3,6 +3,7 @@
 import _bootstrap  # noqa: F401
 
 import argparse
+from dataclasses import dataclass
 import json
 from pathlib import Path
 
@@ -13,6 +14,7 @@ from scanner_app.recording.session import SessionReplay
 from scanner_app.tracking.markerless import MarkerlessTracker
 from scanner_app.tracking.models import TrackingResult
 from scanner_app.tracking.quality import QualityGate
+from scanner_app.tracking.rgbd_odometry import RgbdOdometryAdapter
 
 
 def build_argument_parser() -> argparse.ArgumentParser:
@@ -23,6 +25,10 @@ def build_argument_parser() -> argparse.ArgumentParser:
     parser.add_argument("--max-depth-m", type=float, default=0.30)
     parser.add_argument("--min-depth-valid-ratio", type=float, default=0.01)
     parser.add_argument("--warmup-frames", type=int, default=30)
+    parser.add_argument("--tracking-width", type=int, default=640)
+    parser.add_argument("--tracking-height", type=int, default=400)
+    parser.add_argument("--disable-icp", action="store_true")
+    parser.add_argument("--print-every", type=int, default=1)
     parser.add_argument("--record-accepted", action="store_true", help="Keep accepted keyframes in tracker state.")
     parser.add_argument("--no-live", action="store_true", help="Require --replay instead of opening live capture.")
     parser.add_argument("--intrinsics-fx", type=float)
@@ -72,6 +78,48 @@ def result_to_json(
     }
 
 
+@dataclass
+class TrackingSummary:
+    frames: int = 0
+    accepted: int = 0
+    rejected: int = 0
+    keyframes: int = 0
+    lost: int = 0
+    first_timestamp_us: int | None = None
+    last_timestamp_us: int | None = None
+
+    def update(self, timestamp_us: int, result: TrackingResult) -> None:
+        self.frames += 1
+        if result.accepted:
+            self.accepted += 1
+        else:
+            self.rejected += 1
+        if result.keyframe:
+            self.keyframes += 1
+        if result.state.value == "lost":
+            self.lost += 1
+        if self.first_timestamp_us is None:
+            self.first_timestamp_us = int(timestamp_us)
+        self.last_timestamp_us = int(timestamp_us)
+
+    def to_json(self) -> dict[str, object]:
+        elapsed_s = 0.0
+        if self.first_timestamp_us is not None and self.last_timestamp_us is not None:
+            elapsed_s = max(0.0, (self.last_timestamp_us - self.first_timestamp_us) / 1_000_000.0)
+        accepted_updates = max(0, self.accepted - 1)
+        rate = accepted_updates / elapsed_s if elapsed_s > 0.0 else 0.0
+        return {
+            "summary": True,
+            "frames": self.frames,
+            "accepted": self.accepted,
+            "rejected": self.rejected,
+            "keyframes": self.keyframes,
+            "lost": self.lost,
+            "elapsed_s": elapsed_s,
+            "accepted_updates_per_s": rate,
+        }
+
+
 def build_tracker(
     intrinsics: CameraIntrinsics,
     args: argparse.Namespace,
@@ -81,6 +129,12 @@ def build_tracker(
         intrinsics,
         depth_processor=DepthProcessor(args.min_depth_m, args.max_depth_m),
         quality_gate=QualityGate(min_depth_valid_ratio=args.min_depth_valid_ratio),
+        odometry=RgbdOdometryAdapter(
+            intrinsics,
+            tracking_width=args.tracking_width,
+            tracking_height=args.tracking_height,
+            enable_icp=not args.disable_icp,
+        ),
     )
 
 
@@ -98,6 +152,10 @@ def print_result(packet, result: TrackingResult) -> None:
     )
 
 
+def should_print_frame(index: int, print_every: int) -> bool:
+    return print_every > 0 and index % print_every == 0
+
+
 def run_replay(
     args: argparse.Namespace,
     replay_factory=SessionReplay,
@@ -105,11 +163,16 @@ def run_replay(
 ) -> None:
     intrinsics = intrinsics_from_args(args)
     tracker = build_tracker(intrinsics, args, tracker_factory=tracker_factory)
+    summary = TrackingSummary()
     replay = replay_factory(args.replay)
     for index, packet in enumerate(replay.packets(), start=1):
-        print_result(packet, tracker.process(packet))
+        result = tracker.process(packet)
+        summary.update(packet.depth_timestamp_us, result)
+        if should_print_frame(index, args.print_every):
+            print_result(packet, result)
         if args.max_frames > 0 and index >= args.max_frames:
             break
+    print(json.dumps(summary.to_json(), separators=(",", ":"), sort_keys=True))
 
 
 def run_live(
@@ -130,12 +193,17 @@ def run_live(
             capture.read_packet()
         tracker = build_tracker(capture.intrinsics(), args, tracker_factory=tracker_factory)
         frame_count = 0
+        summary = TrackingSummary()
         while True:
             packet = capture.read_packet()
-            print_result(packet, tracker.process(packet))
             frame_count += 1
+            result = tracker.process(packet)
+            summary.update(packet.depth_timestamp_us, result)
+            if should_print_frame(frame_count, args.print_every):
+                print_result(packet, result)
             if args.max_frames > 0 and frame_count >= args.max_frames:
                 break
+        print(json.dumps(summary.to_json(), separators=(",", ":"), sort_keys=True))
     finally:
         capture.stop()
 

@@ -34,10 +34,13 @@ def test_quality_gate_rejects_timestamp_gap_above_200ms() -> None:
 
     assert gate.evaluate(metrics(), timestamp_us=100_000).accepted
     result = gate.evaluate(metrics(), timestamp_us=301_000)
+    recovered = gate.evaluate(metrics(), timestamp_us=401_000)
 
     assert not result.accepted
     assert result.state is TrackingState.DEGRADED
     assert result.reason == "timestamp_gap_above_maximum"
+    assert recovered.accepted
+    assert recovered.state is TrackingState.TRACKING
 
 
 def test_quality_gate_rejects_each_threshold_with_a_specific_reason() -> None:
