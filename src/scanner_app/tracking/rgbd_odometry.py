@@ -47,6 +47,169 @@ def scale_tracking_intrinsics(
     )
 
 
+def estimate_rigid_transform_3d(
+    source_points: np.ndarray,
+    target_points: np.ndarray,
+) -> tuple[np.ndarray, float]:
+    source = np.asarray(source_points, dtype=np.float64)
+    target = np.asarray(target_points, dtype=np.float64)
+    if source.shape != target.shape or source.ndim != 2 or source.shape[1] != 3:
+        raise ValueError("source_points and target_points must be Nx3 arrays.")
+    if source.shape[0] < 3:
+        raise ValueError("At least three 3D correspondences are required.")
+
+    source_center = np.mean(source, axis=0)
+    target_center = np.mean(target, axis=0)
+    source_centered = source - source_center
+    target_centered = target - target_center
+    covariance = source_centered.T @ target_centered
+    u, _s, vt = np.linalg.svd(covariance)
+    rotation = vt.T @ u.T
+    if np.linalg.det(rotation) < 0.0:
+        vt[-1, :] *= -1.0
+        rotation = vt.T @ u.T
+    translation = target_center - rotation @ source_center
+
+    transform = np.eye(4, dtype=np.float64)
+    transform[:3, :3] = rotation
+    transform[:3, 3] = translation
+    residual = (source @ rotation.T + translation) - target
+    rmse = float(np.sqrt(np.mean(np.sum(residual * residual, axis=1))))
+    return transform, rmse
+
+
+class OpenCvRgbdOdometryBackend:
+    def __init__(
+        self,
+        max_features: int = 800,
+        min_matches: int = 12,
+        ransac_threshold_m: float = 0.01,
+    ) -> None:
+        self.max_features = int(max_features)
+        self.min_matches = int(min_matches)
+        self.ransac_threshold_m = float(ransac_threshold_m)
+        self._orb = cv2.ORB_create(nfeatures=self.max_features, fastThreshold=7)
+        self._matcher = cv2.BFMatcher(cv2.NORM_HAMMING, crossCheck=True)
+
+    def estimate(
+        self,
+        previous_color_rgb: np.ndarray,
+        previous_depth_m: np.ndarray,
+        current_color_rgb: np.ndarray,
+        current_depth_m: np.ndarray,
+        intrinsics: CameraIntrinsics,
+        initial_transform: np.ndarray,
+    ) -> OdometryEstimate:
+        previous_gray = cv2.cvtColor(previous_color_rgb, cv2.COLOR_RGB2GRAY)
+        current_gray = cv2.cvtColor(current_color_rgb, cv2.COLOR_RGB2GRAY)
+        previous_keypoints, previous_descriptors = self._orb.detectAndCompute(previous_gray, None)
+        current_keypoints, current_descriptors = self._orb.detectAndCompute(current_gray, None)
+        if previous_descriptors is None or current_descriptors is None:
+            return _failed_estimate(initial_transform, current_depth_m)
+
+        matches = sorted(
+            self._matcher.match(previous_descriptors, current_descriptors),
+            key=lambda match: match.distance,
+        )
+        source_points, target_points = self._matched_depth_points(
+            matches,
+            previous_keypoints,
+            current_keypoints,
+            previous_depth_m,
+            current_depth_m,
+            intrinsics,
+        )
+        if len(source_points) < self.min_matches:
+            return _failed_estimate(initial_transform, current_depth_m)
+
+        source = np.asarray(source_points, dtype=np.float64)
+        target = np.asarray(target_points, dtype=np.float64)
+        ok, affine, inliers = cv2.estimateAffine3D(
+            source,
+            target,
+            ransacThreshold=self.ransac_threshold_m,
+            confidence=0.99,
+        )
+        if not ok or affine is None or inliers is None:
+            return _failed_estimate(initial_transform, current_depth_m)
+
+        inlier_mask = inliers.reshape(-1).astype(bool)
+        if int(np.count_nonzero(inlier_mask)) < self.min_matches:
+            return _failed_estimate(initial_transform, current_depth_m)
+
+        transform, rmse_m = estimate_rigid_transform_3d(source[inlier_mask], target[inlier_mask])
+        return OdometryEstimate(
+            relative_transform=transform,
+            fitness=float(np.mean(inlier_mask)),
+            rmse_m=rmse_m,
+            depth_valid_ratio=float(np.mean(current_depth_m > 0.0)),
+        )
+
+    def _matched_depth_points(
+        self,
+        matches,
+        previous_keypoints,
+        current_keypoints,
+        previous_depth_m: np.ndarray,
+        current_depth_m: np.ndarray,
+        intrinsics: CameraIntrinsics,
+    ) -> tuple[list[np.ndarray], list[np.ndarray]]:
+        source_points: list[np.ndarray] = []
+        target_points: list[np.ndarray] = []
+        for match in matches:
+            previous_u, previous_v = previous_keypoints[match.queryIdx].pt
+            current_u, current_v = current_keypoints[match.trainIdx].pt
+            previous_point = _backproject_depth_pixel(
+                previous_depth_m,
+                previous_u,
+                previous_v,
+                intrinsics,
+            )
+            current_point = _backproject_depth_pixel(
+                current_depth_m,
+                current_u,
+                current_v,
+                intrinsics,
+            )
+            if previous_point is None or current_point is None:
+                continue
+            source_points.append(previous_point)
+            target_points.append(current_point)
+        return source_points, target_points
+
+
+def _failed_estimate(initial_transform: np.ndarray, current_depth_m: np.ndarray) -> OdometryEstimate:
+    return OdometryEstimate(
+        relative_transform=np.asarray(initial_transform, dtype=np.float64).copy(),
+        fitness=0.0,
+        rmse_m=float("inf"),
+        depth_valid_ratio=float(np.mean(current_depth_m > 0.0)),
+    )
+
+
+def _backproject_depth_pixel(
+    depth_m: np.ndarray,
+    u: float,
+    v: float,
+    intrinsics: CameraIntrinsics,
+) -> np.ndarray | None:
+    x = int(round(u))
+    y = int(round(v))
+    if y < 0 or y >= depth_m.shape[0] or x < 0 or x >= depth_m.shape[1]:
+        return None
+    z = float(depth_m[y, x])
+    if not np.isfinite(z) or z <= 0.0:
+        return None
+    return np.array(
+        [
+            (float(u) - intrinsics.cx) * z / intrinsics.fx,
+            (float(v) - intrinsics.cy) * z / intrinsics.fy,
+            z,
+        ],
+        dtype=np.float64,
+    )
+
+
 class RgbdOdometryAdapter:
     def __init__(
         self,

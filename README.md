@@ -80,6 +80,12 @@ khoang 0.20-0.30 m va in moi ket qua tracking thanh mot dong JSON:
 C:\Users\TD-998\OrbbecGemini215-3DScanner\.venv\Scripts\python.exe scripts\13_markerless_tracking.py --min-depth-m 0.20 --max-depth-m 0.30
 ```
 
+Che do nhanh de tracking live vat nho o 25 cm, uu tien dat >=15 accepted updates/s:
+
+```powershell
+C:\Users\TD-998\OrbbecGemini215-3DScanner\.venv\Scripts\python.exe scripts\13_markerless_tracking.py --backend opencv --tracking-width 240 --tracking-height 150 --min-depth-m 0.20 --max-depth-m 0.30 --print-every 0
+```
+
 Chay lai tracking tu session da record thi can truyen depth intrinsics cua session:
 
 ```powershell
