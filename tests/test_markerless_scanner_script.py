@@ -33,7 +33,7 @@ def test_parser_uses_validated_25cm_live_scan_defaults() -> None:
     assert args.min_depth_m == 0.20
     assert args.max_depth_m == 0.30
     assert args.tracking_min_depth_m == 0.20
-    assert args.tracking_max_depth_m == 0.45
+    assert args.tracking_max_depth_m == 0.50
     assert args.voxel_length_m == 0.0015
     assert args.sdf_trunc_m == 0.006
     assert args.live_fusion_width == 320
@@ -41,6 +41,10 @@ def test_parser_uses_validated_25cm_live_scan_defaults() -> None:
     assert args.live_integrate_interval_s == 0.5
     assert args.print_every == 0
     assert args.max_rmse_m == 0.006
+    assert args.max_timestamp_gap_ms == 500
+    assert args.lost_after_rejections == 10
+    assert args.opencv_max_features == 1200
+    assert args.opencv_min_matches == 6
     assert args.headless
 
 
@@ -53,6 +57,31 @@ def test_build_tracker_uses_live_scanner_rmse_limit() -> None:
     tracker = module.build_tracker(CameraIntrinsics(500, 500, 1, 1, 2, 2), args)
 
     assert tracker.quality_gate.max_rmse_m == 0.007
+
+
+def test_build_tracker_uses_live_resilience_settings() -> None:
+    module = load_markerless_scanner_module()
+    args = module.build_argument_parser().parse_args(
+        [
+            "--headless",
+            "--no-export",
+            "--max-timestamp-gap-ms",
+            "700",
+            "--lost-after-rejections",
+            "12",
+            "--opencv-max-features",
+            "1500",
+            "--opencv-min-matches",
+            "5",
+        ]
+    )
+
+    tracker = module.build_tracker(CameraIntrinsics(500, 500, 1, 1, 2, 2), args)
+
+    assert tracker.quality_gate.max_timestamp_gap_us == 700_000
+    assert tracker.quality_gate.lost_after_rejections == 12
+    assert tracker.odometry._backend.max_features == 1500
+    assert tracker.odometry._backend.min_matches == 5
 
 
 def test_build_tracker_uses_wider_tracking_depth_than_fusion_range() -> None:

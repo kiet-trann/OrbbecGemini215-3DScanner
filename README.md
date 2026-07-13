@@ -95,11 +95,17 @@ C:\Users\TD-998\OrbbecGemini215-3DScanner\.venv\Scripts\python.exe scripts\14_ma
 ```
 
 `--min-depth-m/--max-depth-m` la vung object/fusion de cat model hop sua. Tracking live mac dinh
-dung depth rong hon `0.20-0.45 m` de co du diem bam tren vat va mat ban gan. Neu RGB thay ro nhung
+dung depth rong hon `0.20-0.50 m` de co du diem bam tren vat va mat ban gan. Neu RGB thay ro nhung
 status van `LOST` voi `reason=fitness_below_minimum` va `depth` thap, thu tang tracking range:
 
 ```powershell
 C:\Users\TD-998\OrbbecGemini215-3DScanner\.venv\Scripts\python.exe scripts\14_markerless_scanner.py --backend opencv --tracking-width 240 --tracking-height 150 --min-depth-m 0.20 --max-depth-m 0.30 --tracking-max-depth-m 0.50 --print-every 10
+```
+
+Neu van mat tracking khi cua so model dang cap nhat, giam tai preview de uu tien tracking:
+
+```powershell
+C:\Users\TD-998\OrbbecGemini215-3DScanner\.venv\Scripts\python.exe scripts\14_markerless_scanner.py --backend opencv --tracking-width 240 --tracking-height 150 --min-depth-m 0.20 --max-depth-m 0.30 --live-integrate-interval-s 1.0 --preview-interval-s 1.0 --print-every 10
 ```
 
 Smoke test khong mo cua so va khong export mesh:
