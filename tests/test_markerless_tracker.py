@@ -4,7 +4,7 @@ from scanner_app.camera.models import CameraIntrinsics, SynchronizedFramePacket
 from scanner_app.processing.depth_pipeline import ProcessedDepth
 from scanner_app.tracking.markerless import MarkerlessTracker
 from scanner_app.tracking.models import TrackingState
-from scanner_app.tracking.quality import GateDecision
+from scanner_app.tracking.quality import GateDecision, QualityGate
 from scanner_app.tracking.rgbd_odometry import OdometryEstimate
 
 
@@ -150,6 +150,7 @@ def test_first_low_coverage_depth_frame_stays_initializing_without_previous_stat
         intrinsics(),
         depth_processor=FakeDepthProcessor([processed(0.1), processed()]),
         odometry=odometry,
+        quality_gate=QualityGate(min_depth_valid_ratio=0.5),
         keyframes=keyframes,
     )
 

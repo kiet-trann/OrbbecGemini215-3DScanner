@@ -103,11 +103,13 @@ def test_build_tracker_uses_cli_depth_range() -> None:
 
     assert tracker.depth_processor.min_depth_m == 0.15
     assert tracker.depth_processor.max_depth_m == 0.50
+    assert tracker.quality_gate.min_depth_valid_ratio == 0.01
 
 
 def test_live_run_stops_camera_when_frame_limit_is_reached(capsys) -> None:
     module = load_markerless_tracking_module()
     stopped = []
+    reads = []
 
     packet = SynchronizedFramePacket(
         color_bgr=np.zeros((2, 2, 3), dtype=np.uint8),
@@ -130,6 +132,7 @@ def test_live_run_stops_camera_when_frame_limit_is_reached(capsys) -> None:
             return CameraIntrinsics(500, 500, 1, 1, 2, 2)
 
         def read_packet(self) -> SynchronizedFramePacket:
+            reads.append(True)
             return packet
 
         def stop(self) -> None:
@@ -155,10 +158,11 @@ def test_live_run_stops_camera_when_frame_limit_is_reached(capsys) -> None:
             )
 
     module.run_live(
-        module.build_argument_parser().parse_args(["--max-frames", "1"]),
+        module.build_argument_parser().parse_args(["--max-frames", "1", "--warmup-frames", "2"]),
         capture_factory=FakeCapture,
         tracker_factory=FakeTracker,
     )
 
     assert stopped == [True]
+    assert len(reads) == 3
     assert '"sequence":7' in capsys.readouterr().out

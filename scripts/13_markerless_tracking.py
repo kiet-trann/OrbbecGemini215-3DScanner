@@ -12,6 +12,7 @@ from scanner_app.processing.depth_pipeline import DepthProcessor
 from scanner_app.recording.session import SessionReplay
 from scanner_app.tracking.markerless import MarkerlessTracker
 from scanner_app.tracking.models import TrackingResult
+from scanner_app.tracking.quality import QualityGate
 
 
 def build_argument_parser() -> argparse.ArgumentParser:
@@ -20,6 +21,8 @@ def build_argument_parser() -> argparse.ArgumentParser:
     parser.add_argument("--max-frames", type=int, default=0, help="Stop after N frames; 0 means unlimited.")
     parser.add_argument("--min-depth-m", type=float, default=0.20)
     parser.add_argument("--max-depth-m", type=float, default=0.30)
+    parser.add_argument("--min-depth-valid-ratio", type=float, default=0.01)
+    parser.add_argument("--warmup-frames", type=int, default=30)
     parser.add_argument("--record-accepted", action="store_true", help="Keep accepted keyframes in tracker state.")
     parser.add_argument("--no-live", action="store_true", help="Require --replay instead of opening live capture.")
     parser.add_argument("--intrinsics-fx", type=float)
@@ -77,6 +80,7 @@ def build_tracker(
     return tracker_factory(
         intrinsics,
         depth_processor=DepthProcessor(args.min_depth_m, args.max_depth_m),
+        quality_gate=QualityGate(min_depth_valid_ratio=args.min_depth_valid_ratio),
     )
 
 
@@ -122,6 +126,8 @@ def run_live(
     )
     try:
         capture.start()
+        for _ in range(max(0, args.warmup_frames)):
+            capture.read_packet()
         tracker = build_tracker(capture.intrinsics(), args, tracker_factory=tracker_factory)
         frame_count = 0
         while True:
