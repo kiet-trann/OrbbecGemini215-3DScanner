@@ -75,3 +75,10 @@ def test_quality_gate_marks_three_rejections_lost_and_recovers() -> None:
     assert recovered.accepted
     assert recovered.state is TrackingState.TRACKING
     assert gate.rejected_count == 0
+
+
+def test_quality_gate_allows_configurable_rmse_limit() -> None:
+    near_live_limit = metrics(rmse_m=0.005)
+
+    assert not QualityGate().evaluate(near_live_limit, timestamp_us=100_000).accepted
+    assert QualityGate(max_rmse_m=0.006).evaluate(near_live_limit, timestamp_us=100_000).accepted

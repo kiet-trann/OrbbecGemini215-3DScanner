@@ -37,7 +37,20 @@ def test_parser_uses_validated_25cm_live_scan_defaults() -> None:
     assert args.live_fusion_width == 320
     assert args.live_fusion_height == 200
     assert args.live_integrate_interval_s == 0.5
+    assert args.print_every == 0
+    assert args.max_rmse_m == 0.006
     assert args.headless
+
+
+def test_build_tracker_uses_live_scanner_rmse_limit() -> None:
+    module = load_markerless_scanner_module()
+    args = module.build_argument_parser().parse_args(
+        ["--headless", "--no-export", "--max-rmse-m", "0.007"]
+    )
+
+    tracker = module.build_tracker(CameraIntrinsics(500, 500, 1, 1, 2, 2), args)
+
+    assert tracker.quality_gate.max_rmse_m == 0.007
 
 
 def test_live_scan_integrates_only_new_accepted_keyframes_and_stops_camera() -> None:

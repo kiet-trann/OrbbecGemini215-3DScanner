@@ -44,6 +44,7 @@ def build_argument_parser() -> argparse.ArgumentParser:
     parser.add_argument("--min-depth-m", type=float, default=0.20)
     parser.add_argument("--max-depth-m", type=float, default=0.30)
     parser.add_argument("--min-depth-valid-ratio", type=float, default=0.01)
+    parser.add_argument("--max-rmse-m", type=float, default=0.006)
     parser.add_argument("--backend", choices=("opencv", "open3d"), default="opencv")
     parser.add_argument("--tracking-width", type=int, default=240)
     parser.add_argument("--tracking-height", type=int, default=150)
@@ -61,6 +62,7 @@ def build_argument_parser() -> argparse.ArgumentParser:
     parser.add_argument("--preview-interval-s", type=float, default=0.5)
     parser.add_argument("--headless", action="store_true")
     parser.add_argument("--no-export", action="store_true")
+    parser.add_argument("--print-every", type=int, default=0)
     parser.add_argument("--output", type=Path, default=None)
     return parser
 
@@ -79,7 +81,10 @@ def build_tracker(
     return tracker_factory(
         intrinsics,
         depth_processor=DepthProcessor(args.min_depth_m, args.max_depth_m),
-        quality_gate=QualityGate(min_depth_valid_ratio=args.min_depth_valid_ratio),
+        quality_gate=QualityGate(
+            min_depth_valid_ratio=args.min_depth_valid_ratio,
+            max_rmse_m=args.max_rmse_m,
+        ),
         odometry=RgbdOdometryAdapter(
             intrinsics,
             backend=backend,
@@ -285,6 +290,8 @@ def run_live_scan(
                 message=None,
             )
             preview.update_color(packet.color_bgr, format_status_line(snapshot))
+            if args.print_every > 0 and summary.frames % args.print_every == 0:
+                print(format_status_line(snapshot), flush=True)
 
             if (
                 getattr(preview, "wants_mesh_preview", True)
