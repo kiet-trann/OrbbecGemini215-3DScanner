@@ -69,6 +69,17 @@ def result_to_json(
     }
 
 
+def build_tracker(
+    intrinsics: CameraIntrinsics,
+    args: argparse.Namespace,
+    tracker_factory=MarkerlessTracker,
+) -> MarkerlessTracker:
+    return tracker_factory(
+        intrinsics,
+        depth_processor=DepthProcessor(args.min_depth_m, args.max_depth_m),
+    )
+
+
 def print_result(packet, result: TrackingResult) -> None:
     print(
         json.dumps(
@@ -89,10 +100,7 @@ def run_replay(
     tracker_factory=MarkerlessTracker,
 ) -> None:
     intrinsics = intrinsics_from_args(args)
-    tracker = tracker_factory(
-        intrinsics,
-        depth_processor=DepthProcessor(args.min_depth_m, args.max_depth_m),
-    )
+    tracker = build_tracker(intrinsics, args, tracker_factory=tracker_factory)
     replay = replay_factory(args.replay)
     for index, packet in enumerate(replay.packets(), start=1):
         print_result(packet, tracker.process(packet))
@@ -114,10 +122,7 @@ def run_live(
     )
     try:
         capture.start()
-        tracker = tracker_factory(
-            capture.intrinsics(),
-            depth_processor=DepthProcessor(args.min_depth_m, args.max_depth_m),
-        )
+        tracker = build_tracker(capture.intrinsics(), args, tracker_factory=tracker_factory)
         frame_count = 0
         while True:
             packet = capture.read_packet()

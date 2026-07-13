@@ -56,7 +56,7 @@ class RgbdOdometryAdapter:
         tracking_height: int = 400,
     ) -> None:
         self.intrinsics = scale_tracking_intrinsics(intrinsics, tracking_width, tracking_height)
-        self.backend = backend if backend is not None else Open3dRgbdOdometryBackend()
+        self._backend = backend
         self.tracking_width = int(tracking_width)
         self.tracking_height = int(tracking_height)
 
@@ -77,7 +77,7 @@ class RgbdOdometryAdapter:
         current_depth_m = self._resize_depth_m(current_depth.depth_m)
         depth_valid_ratio = float(np.mean(current_depth_m > 0.0))
 
-        estimate = self.backend.estimate(
+        estimate = self._get_backend().estimate(
             previous_color_rgb,
             previous_depth_m,
             current_color_rgb,
@@ -91,6 +91,11 @@ class RgbdOdometryAdapter:
             rmse_m=estimate.rmse_m,
             depth_valid_ratio=depth_valid_ratio,
         )
+
+    def _get_backend(self) -> RgbdOdometryBackend:
+        if self._backend is None:
+            self._backend = Open3dRgbdOdometryBackend()
+        return self._backend
 
     def _resize_color_bgr_to_rgb(self, color_bgr: np.ndarray) -> np.ndarray:
         color_rgb = np.asarray(color_bgr)[..., ::-1]

@@ -93,6 +93,18 @@ def test_result_to_json_emits_tracking_metrics_keyframe_and_pose() -> None:
     assert payload["pose"][0][3] == -0.02
 
 
+def test_build_tracker_uses_cli_depth_range() -> None:
+    module = load_markerless_tracking_module()
+    args = module.build_argument_parser().parse_args(
+        ["--min-depth-m", "0.15", "--max-depth-m", "0.50"]
+    )
+
+    tracker = module.build_tracker(CameraIntrinsics(500, 500, 1, 1, 2, 2), args)
+
+    assert tracker.depth_processor.min_depth_m == 0.15
+    assert tracker.depth_processor.max_depth_m == 0.50
+
+
 def test_live_run_stops_camera_when_frame_limit_is_reached(capsys) -> None:
     module = load_markerless_tracking_module()
     stopped = []
