@@ -8,12 +8,22 @@ import numpy as np
 from scanner_app.camera.models import CameraIntrinsics, SynchronizedFramePacket
 from scanner_app.processing.depth_pipeline import ProcessedDepth
 from scanner_app.tracking.rgbd_odometry import (
+    BackgroundAssistedRgbdOdometryBackend,
     OdometryEstimate,
     OpenCvRgbdOdometryBackend,
     RgbdOdometryAdapter,
     estimate_rigid_transform_3d,
     scale_tracking_intrinsics,
 )
+
+
+def test_background_assisted_backend_uses_stricter_geometric_match_limits() -> None:
+    backend = BackgroundAssistedRgbdOdometryBackend()
+
+    assert backend.max_features == 1600
+    assert backend.min_matches == 24
+    assert backend.min_inliers == 16
+    assert backend.ransac_threshold_m == 0.008
 
 
 class FakeBackend:

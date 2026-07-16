@@ -26,7 +26,11 @@ from scanner_app.session.coverage import ViewCoverage
 from scanner_app.session.models import ScannerSnapshot, ScanSessionState
 from scanner_app.tracking.markerless import MarkerlessTracker
 from scanner_app.tracking.quality import QualityGate
-from scanner_app.tracking.rgbd_odometry import OpenCvRgbdOdometryBackend, RgbdOdometryAdapter
+from scanner_app.tracking.rgbd_odometry import (
+    BackgroundAssistedRgbdOdometryBackend,
+    OpenCvRgbdOdometryBackend,
+    RgbdOdometryAdapter,
+)
 from scanner_app.visualization.scanner_window import format_status_line
 
 
@@ -49,7 +53,9 @@ def build_argument_parser() -> argparse.ArgumentParser:
     parser.add_argument("--max-rmse-m", type=float, default=0.006)
     parser.add_argument("--max-timestamp-gap-ms", type=int, default=500)
     parser.add_argument("--lost-after-rejections", type=int, default=10)
-    parser.add_argument("--backend", choices=("opencv", "open3d"), default="opencv")
+    parser.add_argument(
+        "--backend", choices=("opencv", "open3d", "background-assisted"), default="opencv"
+    )
     parser.add_argument("--opencv-max-features", type=int, default=1200)
     parser.add_argument("--opencv-min-matches", type=int, default=6)
     parser.add_argument("--tracking-width", type=int, default=240)
@@ -84,7 +90,12 @@ def build_tracker(
     tracker_factory=MarkerlessTracker,
 ) -> MarkerlessTracker:
     backend = (
-        OpenCvRgbdOdometryBackend(
+        BackgroundAssistedRgbdOdometryBackend(
+            max_features=args.opencv_max_features,
+            min_matches=max(24, args.opencv_min_matches),
+        )
+        if args.backend == "background-assisted"
+        else OpenCvRgbdOdometryBackend(
             max_features=args.opencv_max_features,
             min_matches=args.opencv_min_matches,
         )
@@ -235,7 +246,7 @@ def run_live_scan(
             depth_min_m=args.min_depth_m,
             depth_max_m=args.tracking_max_depth_m,
         ),
-        align_to_depth=True,
+        alignment_target="color" if args.backend == "background-assisted" else "depth",
     )
     preview = preview_factory(headless=args.headless)
     summary = LiveScanSummary()

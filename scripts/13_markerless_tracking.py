@@ -14,7 +14,11 @@ from scanner_app.recording.session import SessionReplay
 from scanner_app.tracking.markerless import MarkerlessTracker
 from scanner_app.tracking.models import TrackingResult
 from scanner_app.tracking.quality import QualityGate
-from scanner_app.tracking.rgbd_odometry import OpenCvRgbdOdometryBackend, RgbdOdometryAdapter
+from scanner_app.tracking.rgbd_odometry import (
+    BackgroundAssistedRgbdOdometryBackend,
+    OpenCvRgbdOdometryBackend,
+    RgbdOdometryAdapter,
+)
 
 
 def build_argument_parser() -> argparse.ArgumentParser:
@@ -29,7 +33,9 @@ def build_argument_parser() -> argparse.ArgumentParser:
     parser.add_argument("--tracking-height", type=int, default=400)
     parser.add_argument("--disable-icp", action="store_true")
     parser.add_argument("--print-every", type=int, default=1)
-    parser.add_argument("--backend", choices=("open3d", "opencv"), default="open3d")
+    parser.add_argument(
+        "--backend", choices=("open3d", "opencv", "background-assisted"), default="open3d"
+    )
     parser.add_argument("--record-accepted", action="store_true", help="Keep accepted keyframes in tracker state.")
     parser.add_argument("--no-live", action="store_true", help="Require --replay instead of opening live capture.")
     parser.add_argument("--intrinsics-fx", type=float)
@@ -126,7 +132,13 @@ def build_tracker(
     args: argparse.Namespace,
     tracker_factory=MarkerlessTracker,
 ) -> MarkerlessTracker:
-    backend = OpenCvRgbdOdometryBackend() if args.backend == "opencv" else None
+    backend = (
+        BackgroundAssistedRgbdOdometryBackend()
+        if args.backend == "background-assisted"
+        else OpenCvRgbdOdometryBackend()
+        if args.backend == "opencv"
+        else None
+    )
     return tracker_factory(
         intrinsics,
         depth_processor=DepthProcessor(args.min_depth_m, args.max_depth_m),
@@ -188,7 +200,7 @@ def run_live(
             depth_min_m=args.min_depth_m,
             depth_max_m=args.max_depth_m,
         ),
-        align_to_depth=True,
+        alignment_target="color" if args.backend == "background-assisted" else "depth",
     )
     try:
         capture.start()

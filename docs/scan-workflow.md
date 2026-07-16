@@ -20,3 +20,11 @@
 - Keep camera distance stable.
 - Move slowly and avoid sudden rotations.
 - Make sure each surface is seen multiple times.
+
+## Markerless office-background trial
+
+Voi vat va moi truong phong dung yen, chay `scripts/16_capture_diagnostic.py
+--alignment-target color` truoc. Neu JSON bao `color_visible: true` o canh vat,
+thu `scripts/14_markerless_scanner.py --backend background-assisted`. Che do
+nay dung depth-to-color alignment de RGB khong bi cat theo depth; no chi export
+be mat quan sat va khong tao mat day.

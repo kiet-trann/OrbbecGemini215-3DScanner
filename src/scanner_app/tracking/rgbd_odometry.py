@@ -134,7 +134,8 @@ class OpenCvRgbdOdometryBackend:
             return _failed_estimate(initial_transform, current_depth_m)
 
         inlier_mask = inliers.reshape(-1).astype(bool)
-        if int(np.count_nonzero(inlier_mask)) < self.min_matches:
+        minimum_inliers = int(getattr(self, "min_inliers", self.min_matches))
+        if int(np.count_nonzero(inlier_mask)) < minimum_inliers:
             return _failed_estimate(initial_transform, current_depth_m)
 
         transform, rmse_m = estimate_rigid_transform_3d(source[inlier_mask], target[inlier_mask])
@@ -176,6 +177,24 @@ class OpenCvRgbdOdometryBackend:
             source_points.append(previous_point)
             target_points.append(current_point)
         return source_points, target_points
+
+
+class BackgroundAssistedRgbdOdometryBackend(OpenCvRgbdOdometryBackend):
+    """Strict ORB/RANSAC tracking for native RGB with depth aligned to color."""
+
+    def __init__(
+        self,
+        max_features: int = 1600,
+        min_matches: int = 24,
+        min_inliers: int = 16,
+        ransac_threshold_m: float = 0.008,
+    ) -> None:
+        super().__init__(
+            max_features=max_features,
+            min_matches=min_matches,
+            ransac_threshold_m=ransac_threshold_m,
+        )
+        self.min_inliers = int(min_inliers)
 
 
 def _failed_estimate(initial_transform: np.ndarray, current_depth_m: np.ndarray) -> OdometryEstimate:
