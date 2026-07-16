@@ -43,12 +43,17 @@ class OrbbecCapture:
         capture_config: CaptureConfig | None = None,
         timeout_ms: int = 1000,
         align_to_depth: bool = False,
+        alignment_target: str | None = None,
     ) -> None:
         self._sdk = sdk_module
         self._color_frame_converter = color_frame_converter
         self._capture_config = capture_config or CaptureConfig()
         self._timeout_ms = timeout_ms
-        self._align_to_depth = align_to_depth
+        if alignment_target is None:
+            alignment_target = "depth" if align_to_depth else "none"
+        if alignment_target not in {"none", "depth", "color"}:
+            raise ValueError("alignment_target must be one of: none, depth, color.")
+        self._alignment_target = alignment_target
         self._align_filter: Any | None = None
         self._depth_filters: tuple[Any, ...] = ()
         self.enabled_depth_filter_names: tuple[str, ...] = ()
@@ -69,7 +74,11 @@ class OrbbecCapture:
         try:
             config = self._build_stream_config(sdk, pipeline)
             self._configure_depth_mode_and_filters(sdk, pipeline)
-            self._align_filter = self._build_align_filter(sdk) if self._align_to_depth else None
+            self._align_filter = (
+                self._build_align_filter(sdk, self._alignment_target)
+                if self._alignment_target != "none"
+                else None
+            )
             enable_sync = getattr(pipeline, "enable_frame_sync", None)
             if enable_sync is None:
                 raise OrbbecCameraError("Orbbec pipeline does not provide enable_frame_sync.")
@@ -154,7 +163,13 @@ class OrbbecCapture:
             raise OrbbecFrameError("Camera pipeline has not been started.")
 
         camera_param = self._pipeline.get_camera_param()
-        intrinsic = camera_param.depth_intrinsic
+        intrinsic = (
+            getattr(camera_param, "rgb_intrinsic", None)
+            if self._alignment_target == "color"
+            else camera_param.depth_intrinsic
+        )
+        if intrinsic is None:
+            raise OrbbecCameraError("Orbbec camera parameters do not provide RGB intrinsics.")
         return CameraIntrinsics(
             fx=float(intrinsic.fx),
             fy=float(intrinsic.fy),
@@ -393,14 +408,17 @@ class OrbbecCapture:
         self._last_color_timestamp_us = 0
 
     @staticmethod
-    def _build_align_filter(sdk: Any) -> Any:
+    def _build_align_filter(sdk: Any, alignment_target: str) -> Any:
         align_filter_factory = getattr(sdk, "AlignFilter", None)
         stream_type = getattr(sdk, "OBStreamType", None)
         if align_filter_factory is None or stream_type is None:
             raise OrbbecCameraError("Orbbec SDK does not provide RGB-D alignment support.")
 
-        depth_stream = getattr(stream_type, "DEPTH_STREAM")
-        return align_filter_factory(align_to_stream=depth_stream)
+        stream_name = "COLOR_STREAM" if alignment_target == "color" else "DEPTH_STREAM"
+        target_stream = getattr(stream_type, stream_name, None)
+        if target_stream is None:
+            raise OrbbecCameraError(f"Orbbec SDK does not provide required {stream_name} API.")
+        return align_filter_factory(align_to_stream=target_stream)
 
     def _convert_color_frame(self, color_frame: Any) -> np.ndarray:
         if self._color_frame_converter is not None:
