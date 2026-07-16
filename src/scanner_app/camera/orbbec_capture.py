@@ -7,6 +7,7 @@ for the rest of the prototype.
 from importlib import import_module
 import os
 from pathlib import Path
+import time
 from typing import Any
 
 import numpy as np
@@ -154,6 +155,7 @@ class OrbbecCapture:
             color_timestamp_us=self._last_color_timestamp_us,
             imu_samples=self._imu_buffer.pop_through(depth_timestamp_us),
             sequence=self._sequence,
+            host_timestamp_us=time.monotonic_ns() // 1_000,
         )
         self._sequence += 1
         return packet

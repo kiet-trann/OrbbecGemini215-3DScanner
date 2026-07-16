@@ -42,10 +42,16 @@ class SynchronizedFramePacket:
     color_timestamp_us: int
     imu_samples: tuple[ImuSample, ...]
     sequence: int
+    host_timestamp_us: int = 0
 
     @property
     def depth_m(self) -> np.ndarray:
         return self.depth_raw.astype(np.float32) * float(self.depth_scale_mm) * 0.001
+
+    @property
+    def tracking_timestamp_us(self) -> int:
+        """Use the host's monotonic clock for tracking when capture provides it."""
+        return self.host_timestamp_us if self.host_timestamp_us > 0 else self.depth_timestamp_us
 
 
 @dataclass(frozen=True)
