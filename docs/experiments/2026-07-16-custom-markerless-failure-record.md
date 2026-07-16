@@ -43,6 +43,15 @@ Every nonzero depth pixel was already in the test range, so the loss was not cau
 
 Gemini exposes a writable `OB_PROP_DEPTH_HOLEFILTER_BOOL` firmware property and it was initially `false`. The property was enabled for an A/B test, but the next pipeline returned no RGB-D frames and emitted a Color timestamp anomaly. The test was immediately rolled back; readback confirmed `false`. A short post-rollback startup check returned one RGB-D frame but was not a valid replacement measurement because pipeline startup consumed the three-second capture window.
 
-## Current decision
+## Operating decision (approved by user)
 
-Do not integrate Gemini's firmware hole filter and do not continue RTAB-Map parameter tuning. The remaining viable work is an architecture change that can explicitly handle sparse/invalid depth at edges (for example, capture keyframes with known-good depth and reconstruct them offline), or a different depth sensor whose raw edge coverage meets the requirement.
+Use the RTAB-Map GUI as the primary scanner for the current Gemini 215 workflow. It has already reconstructed three faces of the box correctly, provides a live markerless 3D preview, and requires no custom scanner implementation.
+
+Operational workflow:
+
+1. Start RTAB-Map with the Gemini Orbbec SDK v2 source.
+2. Scan the required visible faces while keeping the object in view.
+3. Pause RTAB-Map while the camera is still aimed at the object; do not stop by turning the camera away.
+4. Save the session, crop table/background geometry, then export the object mesh/OBJ.
+
+Freeze further work on custom scanner branches, RTAB-Map odometry tuning, and Gemini hardware hole filtering. Revisit custom code only if RTAB-Map is blocked by a concrete requirement that cannot be addressed through its configuration or post-processing.
