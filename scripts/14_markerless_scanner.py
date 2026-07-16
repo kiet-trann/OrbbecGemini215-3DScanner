@@ -299,7 +299,11 @@ def run_live_scan(
             integration_height=args.live_fusion_height,
         )
         if getattr(preview, "wants_mesh_preview", True):
-            preview_worker = preview_worker_factory(fusion_factory, preview_fusion_kwargs)
+            preview_worker = preview_worker_factory(
+                fusion_factory,
+                preview_fusion_kwargs,
+                integration_interval_s=args.live_integrate_interval_s,
+            )
             preview_worker.start()
         final_keyframes = []
         summary.started_at = time.monotonic()
@@ -317,7 +321,6 @@ def run_live_scan(
                 final_keyframes = keyframes
                 if preview_worker is not None:
                     preview_worker.submit(keyframes[-1])
-                    summary.integrated_keyframes += 1
 
             tracking_fps = summary.frames / max(0.001, now - summary.started_at)
             snapshot = ScannerSnapshot(
@@ -363,6 +366,11 @@ def run_live_scan(
             summary.stopped_at = time.monotonic()
         if preview_worker is not None:
             preview_worker.close()
+            summary.integrated_keyframes = getattr(
+                preview_worker,
+                "integrated_keyframes",
+                summary.integrated_keyframes,
+            )
         preview.close()
         capture.stop()
     return summary

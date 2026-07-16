@@ -190,9 +190,11 @@ def test_live_scan_integrates_only_new_accepted_keyframes_and_stops_camera() -> 
     created_workers = []
 
     class FakePreviewWorker:
-        def __init__(self, _fusion_factory, fusion_kwargs) -> None:
+        def __init__(self, _fusion_factory, fusion_kwargs, *, integration_interval_s) -> None:
             self.fusion_kwargs = fusion_kwargs
+            self.integration_interval_s = integration_interval_s
             self.submitted = []
+            self.integrated_keyframes = 2
             self.started = False
             self.closed = False
             created_workers.append(self)
@@ -235,6 +237,7 @@ def test_live_scan_integrates_only_new_accepted_keyframes_and_stops_camera() -> 
     assert summary.integrated_keyframes == 2
     assert created_workers[0].started
     assert created_workers[0].closed
+    assert created_workers[0].integration_interval_s == 0.5
     assert [keyframe.packet.sequence for keyframe in created_workers[0].submitted] == [0, 2]
     assert created_workers[0].fusion_kwargs["voxel_length_m"] == 0.0015
     assert created_workers[0].fusion_kwargs["min_depth_m"] == 0.20
