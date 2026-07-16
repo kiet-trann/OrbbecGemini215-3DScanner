@@ -9,7 +9,12 @@ from scanner_app.tracking.quality import GateDecision, QualityGate
 from scanner_app.tracking.rgbd_odometry import OdometryEstimate
 
 
-def packet(sequence: int, timestamp_us: int) -> SynchronizedFramePacket:
+def packet(
+    sequence: int,
+    timestamp_us: int,
+    *,
+    host_timestamp_us: int = 0,
+) -> SynchronizedFramePacket:
     return SynchronizedFramePacket(
         color_bgr=np.zeros((2, 2, 3), dtype=np.uint8),
         depth_raw=np.full((2, 2), 250, dtype=np.uint16),
@@ -18,6 +23,7 @@ def packet(sequence: int, timestamp_us: int) -> SynchronizedFramePacket:
         color_timestamp_us=timestamp_us,
         imu_samples=(),
         sequence=sequence,
+        host_timestamp_us=host_timestamp_us,
     )
 
 
@@ -152,6 +158,23 @@ def test_first_valid_frame_initializes_identity_pose_and_keyframe() -> None:
     np.testing.assert_allclose(result.camera_to_world, np.eye(4))
     assert len(keyframes.calls) == 1
     assert keyframes.calls[0][3] is True
+
+
+def test_tracker_uses_host_clock_when_camera_depth_timestamp_regresses() -> None:
+    gate = ScriptedGate([GateDecision(True, TrackingState.TRACKING, None)])
+    tracker = MarkerlessTracker(
+        intrinsics(),
+        depth_processor=FakeDepthProcessor([processed(), processed()]),
+        imu_estimator=FakeImuEstimator(),
+        odometry=FakeOdometry([relative_translation(0.01)]),
+        quality_gate=gate,
+    )
+
+    tracker.process(packet(1, 100_000, host_timestamp_us=1_000_000))
+    result = tracker.process(packet(2, 1, host_timestamp_us=1_100_000))
+
+    assert result.accepted
+    assert gate.metrics[0][1] == 1_100_000
 
 
 def test_first_invalid_depth_frame_stays_initializing_without_previous_state() -> None:

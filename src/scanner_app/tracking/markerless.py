@@ -54,14 +54,14 @@ class MarkerlessTracker:
             imu_rotation,
         )
         metrics = _metrics_from_estimate(estimate.relative_transform, estimate)
-        decision = self.quality_gate.evaluate(metrics, packet.depth_timestamp_us)
+        decision = self.quality_gate.evaluate(metrics, packet.tracking_timestamp_us)
         relocalized = False
         if not decision.accepted:
             relocalized_estimate = self._try_relocalize(packet, current_depth, imu_rotation)
             if relocalized_estimate is not None:
                 reference_pose, estimate = relocalized_estimate
                 metrics = _metrics_from_estimate(estimate.relative_transform, estimate)
-                decision = self.quality_gate.evaluate(metrics, packet.depth_timestamp_us)
+                decision = self.quality_gate.evaluate(metrics, packet.tracking_timestamp_us)
                 relocalized = decision.accepted
             else:
                 reference_pose = self._camera_to_world

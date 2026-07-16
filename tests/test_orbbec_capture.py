@@ -696,10 +696,15 @@ class OrbbecCaptureTests(unittest.TestCase):
         ))
         sdk.imu_pipeline.emit_callback(FakeFrameSet(gyro_frame=FakeImuFrame(4.0, 5.0, 6.0, 21_000)))
 
-        first = capture.read_packet()
+        with patch(
+            "scanner_app.camera.orbbec_capture.time.monotonic_ns",
+            return_value=1_234_567_000,
+        ):
+            first = capture.read_packet()
         second = capture.read_packet()
 
         self.assertEqual(first.depth_timestamp_us, 20_000)
+        self.assertEqual(first.host_timestamp_us, 1_234_567)
         self.assertEqual(first.color_timestamp_us, 19_990)
         self.assertEqual(first.sequence, 0)
         self.assertEqual([sample.sensor for sample in first.imu_samples], ["gyro", "accel"])
