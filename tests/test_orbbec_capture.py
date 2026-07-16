@@ -96,8 +96,18 @@ class FakeIntrinsic:
     height = 480
 
 
+class FakeColorIntrinsic:
+    fx = 600.0
+    fy = 601.0
+    cx = 319.0
+    cy = 239.0
+    width = 1280
+    height = 720
+
+
 class FakeCameraParam:
     depth_intrinsic = FakeIntrinsic()
+    rgb_intrinsic = FakeColorIntrinsic()
 
 
 class FakePipeline:
@@ -162,6 +172,7 @@ class FakeSdk:
 
     class OBStreamType:
         DEPTH_STREAM = "depth-stream"
+        COLOR_STREAM = "color-stream"
 
     class OBFormat:
         Y16 = "y16"
@@ -498,6 +509,22 @@ class NoDeviceSdk:
 
 
 class OrbbecCaptureTests(unittest.TestCase):
+    def test_depth_to_color_alignment_uses_color_stream_and_color_intrinsics(self) -> None:
+        sdk = FakeSdk()
+        capture = OrbbecCapture(
+            sdk_module=sdk,
+            color_frame_converter=lambda frame: frame.data,
+            alignment_target="color",
+        )
+
+        capture.start()
+
+        self.assertEqual(sdk.align_filter.align_to_stream, "color-stream")
+        intrinsics = capture.intrinsics()
+        self.assertEqual(intrinsics.width, 1280)
+        self.assertEqual(intrinsics.height, 720)
+        self.assertEqual(intrinsics.fx, 600.0)
+
     def test_start_uses_explicit_30_fps_rgbd_profiles_and_enables_sync(self) -> None:
         sdk = FakeSdk()
         capture = OrbbecCapture(sdk_module=sdk, capture_config=CaptureConfig())
