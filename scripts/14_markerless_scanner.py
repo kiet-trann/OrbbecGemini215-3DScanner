@@ -23,6 +23,7 @@ from scanner_app.camera.orbbec_capture import (
 from scanner_app.fusion.live import LiveFusionEngine
 from scanner_app.fusion.preview_worker import LivePreviewWorker
 from scanner_app.processing.depth_pipeline import DepthProcessor
+from scanner_app.processing.mesh_orientation import orient_camera_y_down_mesh_y_up
 from scanner_app.processing.mesh_reconstruction import cleanup_mesh, describe_mesh
 from scanner_app.session.coverage import ViewCoverage
 from scanner_app.session.models import ScannerSnapshot, ScanSessionState
@@ -344,7 +345,7 @@ def run_live_scan(
                 preview_worker.drain_latest_mesh() if preview_worker is not None else None
             )
             if preview_mesh is not None:
-                preview.update_mesh(preview_mesh)
+                preview.update_mesh(orient_camera_y_down_mesh_y_up(preview_mesh))
                 summary.preview_updates += 1
 
             if preview.poll():
@@ -384,6 +385,7 @@ def export_mesh(mesh: Any, output_path: Path | None = None) -> Path | None:
 
     import open3d as o3d
 
+    orient_camera_y_down_mesh_y_up(mesh)
     cleanup_mesh(mesh)
     validate_export_mesh(mesh)
     output = (output_path or build_output_path()).resolve()
