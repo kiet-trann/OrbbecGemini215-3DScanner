@@ -114,6 +114,16 @@ def test_build_tracker_uses_wider_tracking_depth_than_fusion_range() -> None:
     assert tracker.depth_processor.max_depth_m == 0.50
 
 
+def test_background_assisted_tracker_allows_pnp_pose_without_current_depth() -> None:
+    module = load_markerless_scanner_module()
+    args = module.build_argument_parser().parse_args(["--backend", "background-assisted"])
+
+    tracker = module.build_tracker(CameraIntrinsics(500, 500, 1, 1, 2, 2), args)
+
+    assert tracker.quality_gate.min_depth_valid_ratio == 0.0
+    assert tracker.odometry._backend.requires_current_depth is False
+
+
 def test_live_scan_summary_reports_rejection_reasons() -> None:
     module = load_markerless_scanner_module()
     summary = module.LiveScanSummary()

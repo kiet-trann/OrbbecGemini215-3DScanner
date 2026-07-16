@@ -142,7 +142,11 @@ def build_tracker(
     return tracker_factory(
         intrinsics,
         depth_processor=DepthProcessor(args.min_depth_m, args.max_depth_m),
-        quality_gate=QualityGate(min_depth_valid_ratio=args.min_depth_valid_ratio),
+        quality_gate=QualityGate(
+            min_depth_valid_ratio=(
+                0.0 if args.backend == "background-assisted" else args.min_depth_valid_ratio
+            )
+        ),
         odometry=RgbdOdometryAdapter(
             intrinsics,
             backend=backend,

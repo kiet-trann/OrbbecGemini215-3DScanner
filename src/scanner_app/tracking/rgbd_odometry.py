@@ -182,6 +182,8 @@ class OpenCvRgbdOdometryBackend:
 class BackgroundAssistedRgbdOdometryBackend(OpenCvRgbdOdometryBackend):
     """Strict ORB/RANSAC tracking for native RGB with depth aligned to color."""
 
+    requires_current_depth = False
+
     def __init__(
         self,
         max_features: int = 1600,
@@ -195,6 +197,156 @@ class BackgroundAssistedRgbdOdometryBackend(OpenCvRgbdOdometryBackend):
             ransac_threshold_m=ransac_threshold_m,
         )
         self.min_inliers = int(min_inliers)
+        self._pnp_backend = VisualPnpOdometryBackend(
+            max_features=max_features,
+            min_matches=max(8, min_matches // 2),
+            min_inliers=max(6, min_inliers // 2),
+        )
+
+    def estimate(
+        self,
+        previous_color_rgb: np.ndarray,
+        previous_depth_m: np.ndarray,
+        current_color_rgb: np.ndarray,
+        current_depth_m: np.ndarray,
+        intrinsics: CameraIntrinsics,
+        initial_transform: np.ndarray,
+    ) -> OdometryEstimate:
+        estimate = super().estimate(
+            previous_color_rgb,
+            previous_depth_m,
+            current_color_rgb,
+            current_depth_m,
+            intrinsics,
+            initial_transform,
+        )
+        if estimate.fitness >= 0.35 and np.isfinite(estimate.rmse_m):
+            return estimate
+        return self._pnp_backend.estimate(
+            previous_color_rgb,
+            previous_depth_m,
+            current_color_rgb,
+            current_depth_m,
+            intrinsics,
+            initial_transform,
+        )
+
+
+class VisualPnpOdometryBackend(OpenCvRgbdOdometryBackend):
+    """Estimate previous-camera to current-camera motion from 3D--2D RGB matches."""
+
+    requires_current_depth = False
+
+    def __init__(
+        self,
+        max_features: int = 1600,
+        min_matches: int = 12,
+        min_inliers: int = 8,
+        reprojection_error_px: float = 3.0,
+    ) -> None:
+        super().__init__(max_features=max_features, min_matches=min_matches)
+        self.min_inliers = int(min_inliers)
+        self.reprojection_error_px = float(reprojection_error_px)
+
+    def estimate(
+        self,
+        previous_color_rgb: np.ndarray,
+        previous_depth_m: np.ndarray,
+        current_color_rgb: np.ndarray,
+        current_depth_m: np.ndarray,
+        intrinsics: CameraIntrinsics,
+        initial_transform: np.ndarray,
+    ) -> OdometryEstimate:
+        previous_gray = cv2.cvtColor(previous_color_rgb, cv2.COLOR_RGB2GRAY)
+        current_gray = cv2.cvtColor(current_color_rgb, cv2.COLOR_RGB2GRAY)
+        previous_keypoints, previous_descriptors = self._orb.detectAndCompute(previous_gray, None)
+        current_keypoints, current_descriptors = self._orb.detectAndCompute(current_gray, None)
+        if previous_descriptors is None or current_descriptors is None:
+            return _failed_estimate(initial_transform, current_depth_m)
+
+        matches = sorted(
+            self._matcher.match(previous_descriptors, current_descriptors),
+            key=lambda match: match.distance,
+        )
+        source_points = []
+        current_pixels = []
+        for match in matches:
+            previous_u, previous_v = previous_keypoints[match.queryIdx].pt
+            source_point = _backproject_depth_pixel(
+                previous_depth_m,
+                previous_u,
+                previous_v,
+                intrinsics,
+            )
+            if source_point is None:
+                continue
+            current_pixels.append(current_keypoints[match.trainIdx].pt)
+            source_points.append(source_point)
+
+        return self.estimate_pnp(
+            np.asarray(source_points, dtype=np.float64),
+            np.asarray(current_pixels, dtype=np.float64),
+            intrinsics,
+            initial_transform,
+            current_depth_m=current_depth_m,
+        )
+
+    def estimate_pnp(
+        self,
+        source_points: np.ndarray,
+        current_pixels: np.ndarray,
+        intrinsics: CameraIntrinsics,
+        initial_transform: np.ndarray,
+        *,
+        current_depth_m: np.ndarray,
+    ) -> OdometryEstimate:
+        if len(source_points) < self.min_matches:
+            return _failed_estimate(initial_transform, current_depth_m)
+        camera_matrix = np.array(
+            [
+                [intrinsics.fx, 0.0, intrinsics.cx],
+                [0.0, intrinsics.fy, intrinsics.cy],
+                [0.0, 0.0, 1.0],
+            ],
+            dtype=np.float64,
+        )
+        ok, rvec, tvec, inliers = cv2.solvePnPRansac(
+            np.asarray(source_points, dtype=np.float64),
+            np.asarray(current_pixels, dtype=np.float64),
+            camera_matrix,
+            None,
+            iterationsCount=100,
+            reprojectionError=self.reprojection_error_px,
+            confidence=0.99,
+            flags=cv2.SOLVEPNP_EPNP,
+        )
+        if not ok or rvec is None or tvec is None or inliers is None:
+            return _failed_estimate(initial_transform, current_depth_m)
+        inlier_indices = inliers.reshape(-1)
+        if len(inlier_indices) < self.min_inliers:
+            return _failed_estimate(initial_transform, current_depth_m)
+
+        rotation, _ = cv2.Rodrigues(rvec)
+        transform = np.eye(4, dtype=np.float64)
+        transform[:3, :3] = rotation
+        transform[:3, 3] = np.asarray(tvec, dtype=np.float64).reshape(3)
+        projected, _ = cv2.projectPoints(
+            np.asarray(source_points, dtype=np.float64)[inlier_indices],
+            rvec,
+            tvec,
+            camera_matrix,
+            None,
+        )
+        residual_px = projected.reshape(-1, 2) - np.asarray(current_pixels)[inlier_indices]
+        pixel_rmse = float(np.sqrt(np.mean(np.sum(residual_px**2, axis=1))))
+        depth_scale = float(np.median(np.asarray(source_points)[inlier_indices, 2]))
+        rmse_m = pixel_rmse * depth_scale / float((intrinsics.fx + intrinsics.fy) * 0.5)
+        return OdometryEstimate(
+            relative_transform=transform,
+            fitness=float(len(inlier_indices) / len(source_points)),
+            rmse_m=rmse_m,
+            depth_valid_ratio=float(np.mean(current_depth_m > 0.0)),
+        )
 
 
 def _failed_estimate(initial_transform: np.ndarray, current_depth_m: np.ndarray) -> OdometryEstimate:
@@ -265,9 +417,10 @@ class RgbdOdometryAdapter:
         previous_valid_pixels = int(np.count_nonzero(previous_depth_m > 0.0))
         current_valid_pixels = int(np.count_nonzero(current_depth_m > 0.0))
 
-        if (
-            previous_valid_pixels < self.min_backend_valid_pixels
-            or current_valid_pixels < self.min_backend_valid_pixels
+        backend = self._get_backend()
+        requires_current_depth = bool(getattr(backend, "requires_current_depth", True))
+        if previous_valid_pixels < self.min_backend_valid_pixels or (
+            requires_current_depth and current_valid_pixels < self.min_backend_valid_pixels
         ):
             initial_transform = np.asarray(initial_transform, dtype=np.float64)
             return OdometryEstimate(
@@ -277,7 +430,7 @@ class RgbdOdometryAdapter:
                 depth_valid_ratio=depth_valid_ratio,
             )
 
-        estimate = self._get_backend().estimate(
+        estimate = backend.estimate(
             previous_color_rgb,
             previous_depth_m,
             current_color_rgb,

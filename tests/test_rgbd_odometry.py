@@ -12,6 +12,7 @@ from scanner_app.tracking.rgbd_odometry import (
     OdometryEstimate,
     OpenCvRgbdOdometryBackend,
     RgbdOdometryAdapter,
+    VisualPnpOdometryBackend,
     estimate_rigid_transform_3d,
     scale_tracking_intrinsics,
 )
@@ -24,6 +25,44 @@ def test_background_assisted_backend_uses_stricter_geometric_match_limits() -> N
     assert backend.min_matches == 24
     assert backend.min_inliers == 16
     assert backend.ransac_threshold_m == 0.008
+    assert backend.requires_current_depth is False
+
+
+def test_visual_pnp_recovers_motion_without_current_depth() -> None:
+    intrinsics = CameraIntrinsics(500, 500, 320, 240, 640, 480)
+    source_points = np.array(
+        [
+            [-0.03, -0.02, 0.25],
+            [0.03, -0.02, 0.25],
+            [-0.03, 0.02, 0.28],
+            [0.03, 0.02, 0.28],
+            [0.00, 0.00, 0.32],
+            [0.02, -0.01, 0.30],
+        ],
+        dtype=np.float64,
+    )
+    expected = np.eye(4)
+    expected[:3, 3] = [0.005, -0.002, 0.001]
+    transformed = source_points + expected[:3, 3]
+    image_points = np.column_stack(
+        (
+            intrinsics.fx * transformed[:, 0] / transformed[:, 2] + intrinsics.cx,
+            intrinsics.fy * transformed[:, 1] / transformed[:, 2] + intrinsics.cy,
+        )
+    )
+
+    result = VisualPnpOdometryBackend(min_matches=4, min_inliers=4).estimate_pnp(
+        source_points,
+        image_points,
+        intrinsics,
+        np.eye(4),
+        current_depth_m=np.zeros((4, 4), dtype=np.float32),
+    )
+
+    assert result.fitness == 1.0
+    assert result.depth_valid_ratio == 0.0
+    assert result.rmse_m < 0.001
+    np.testing.assert_allclose(result.relative_transform[:3, 3], expected[:3, 3], atol=0.001)
 
 
 class FakeBackend:
@@ -154,6 +193,31 @@ def test_adapter_rejects_sparse_depth_before_backend_call() -> None:
     assert estimate.fitness == 0.0
     assert np.isinf(estimate.rmse_m)
     assert estimate.depth_valid_ratio == 0.0025
+
+
+def test_adapter_allows_visual_backend_when_only_current_depth_is_missing() -> None:
+    class VisualBackend(FakeBackend):
+        requires_current_depth = False
+
+    backend = VisualBackend()
+    adapter = RgbdOdometryAdapter(
+        CameraIntrinsics(800, 600, 640, 400, 1280, 800),
+        backend=backend,
+    )
+    color = np.zeros((40, 40, 3), dtype=np.uint8)
+    previous_depth = np.full((40, 40), 0.25, dtype=np.float32)
+    current_depth = np.zeros((40, 40), dtype=np.float32)
+
+    estimate = adapter.estimate(
+        packet(color),
+        processed(previous_depth),
+        packet(color),
+        processed(current_depth),
+        np.eye(3),
+    )
+
+    assert len(backend.calls) == 1
+    assert estimate.fitness == 0.7
 
 
 def test_estimate_rigid_transform_3d_recovers_translation_and_rmse() -> None:
