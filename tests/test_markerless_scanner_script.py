@@ -318,6 +318,25 @@ def test_validate_export_mesh_rejects_many_fragment_components() -> None:
         module.validate_export_mesh(FragmentedMesh())
 
 
+def test_validate_export_mesh_ignores_tiny_tsdf_speckle_components() -> None:
+    module = load_markerless_scanner_module()
+
+    class SpeckledMesh:
+        triangles = [object()] * 1020
+
+        def cluster_connected_triangles(self):
+            return None, [1000] + [1] * 20, [1.0] + [0.000001] * 20
+
+        def get_axis_aligned_bounding_box(self):
+            return type(
+                "Box",
+                (),
+                {"get_extent": lambda self: np.array([0.1, 0.1, 0.1])},
+            )()
+
+    module.validate_export_mesh(SpeckledMesh())
+
+
 def test_validate_export_mesh_rejects_oversized_bounds() -> None:
     module = load_markerless_scanner_module()
 

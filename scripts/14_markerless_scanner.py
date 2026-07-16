@@ -381,9 +381,14 @@ def validate_export_mesh(
     *,
     max_component_count: int = 3,
     max_extent_m: float = 0.36,
+    min_component_area_ratio: float = 0.03,
 ) -> None:
-    _labels, counts, _areas = mesh.cluster_connected_triangles()
-    component_count = len(counts)
+    _labels, counts, areas = mesh.cluster_connected_triangles()
+    area_values = np.asarray(areas, dtype=np.float64)
+    largest_area = float(np.max(area_values)) if len(area_values) else 0.0
+    component_count = int(
+        np.count_nonzero(area_values >= largest_area * float(min_component_area_ratio))
+    )
     if component_count > max_component_count:
         raise ValueError(
             f"Refusing to export mesh: too many disconnected components ({component_count})."
