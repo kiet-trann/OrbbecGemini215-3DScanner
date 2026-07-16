@@ -106,6 +106,19 @@ class ScriptedGate:
         self.metrics.append((metrics, timestamp_us))
         return self.decisions.pop(0)
 
+    def metrics_rejection_reason(self, _metrics) -> None:
+        return None
+
+
+class RecordingQualityGate(QualityGate):
+    def __init__(self) -> None:
+        super().__init__(min_depth_valid_ratio=0.01)
+        self.evaluate_timestamps = []
+
+    def evaluate(self, metrics, timestamp_us: int):
+        self.evaluate_timestamps.append(timestamp_us)
+        return super().evaluate(metrics, timestamp_us)
+
 
 class RecordingKeyframes:
     def __init__(self) -> None:
@@ -287,3 +300,28 @@ def test_tracker_relocalizes_against_older_keyframe_when_previous_frame_fails() 
     assert recovered.reason == "relocalized"
     np.testing.assert_allclose(recovered.camera_to_world[:3, 3], [-0.04, 0.0, 0.0])
     assert [call[0].sequence for call in odometry.calls] == [1, 2, 1]
+
+
+def test_tracker_relocalization_commits_timestamp_once_for_a_packet() -> None:
+    gate = RecordingQualityGate()
+    tracker = MarkerlessTracker(
+        intrinsics(),
+        depth_processor=FakeDepthProcessor([processed(), processed(), processed()]),
+        imu_estimator=FakeImuEstimator(),
+        odometry=FlexibleOdometry(
+            [
+                estimate(x_m=0.02),
+                estimate(x_m=0.03, fitness=0.0, rmse_m=float("inf")),
+                estimate(x_m=0.04),
+            ]
+        ),
+        quality_gate=gate,
+        keyframes=KeyframeStore(translation_threshold_m=0.001),
+    )
+
+    tracker.process(packet(1, 100_000, host_timestamp_us=1_000_000))
+    tracker.process(packet(2, 200_000, host_timestamp_us=1_100_000))
+    recovered = tracker.process(packet(3, 300_000, host_timestamp_us=1_200_000))
+
+    assert recovered.accepted
+    assert gate.evaluate_timestamps == [1_100_000, 1_200_000]
