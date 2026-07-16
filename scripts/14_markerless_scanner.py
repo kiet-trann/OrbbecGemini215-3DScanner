@@ -21,6 +21,7 @@ from scanner_app.camera.orbbec_capture import (
     OrbbecSdkNotAvailable,
 )
 from scanner_app.fusion.live import LiveFusionEngine
+from scanner_app.fusion.preview_worker import LivePreviewWorker
 from scanner_app.processing.depth_pipeline import DepthProcessor
 from scanner_app.processing.mesh_reconstruction import cleanup_mesh, describe_mesh
 from scanner_app.session.coverage import ViewCoverage
@@ -264,6 +265,7 @@ def run_live_scan(
     tracker_factory=MarkerlessTracker,
     fusion_factory=LiveFusionEngine,
     preview_factory=LivePreview,
+    preview_worker_factory=LivePreviewWorker,
 ) -> LiveScanSummary:
     capture = capture_factory(
         capture_config=CaptureConfig(
@@ -274,9 +276,7 @@ def run_live_scan(
     )
     preview = preview_factory(headless=args.headless)
     summary = LiveScanSummary()
-    last_preview_at = 0.0
-    last_live_integrate_at = float("-inf")
-    integrated_keyframe_count = 0
+    preview_worker = None
     coverage = ViewCoverage(object_center=_object_center_from_depth(args))
     roi_min, roi_max = build_object_roi(args)
 
@@ -287,7 +287,7 @@ def run_live_scan(
 
         intrinsics = capture.intrinsics()
         tracker = build_tracker(intrinsics, args, tracker_factory=tracker_factory)
-        fusion = fusion_factory(
+        preview_fusion_kwargs = dict(
             intrinsics=intrinsics,
             voxel_length_m=args.voxel_length_m,
             sdf_trunc_m=args.sdf_trunc_m,
@@ -298,6 +298,9 @@ def run_live_scan(
             integration_width=args.live_fusion_width,
             integration_height=args.live_fusion_height,
         )
+        if getattr(preview, "wants_mesh_preview", True):
+            preview_worker = preview_worker_factory(fusion_factory, preview_fusion_kwargs)
+            preview_worker.start()
         final_keyframes = []
         summary.started_at = time.monotonic()
 
@@ -312,13 +315,8 @@ def run_live_scan(
             if result.accepted and result.keyframe and hasattr(tracker, "keyframes"):
                 keyframes = tracker.keyframes.keyframes
                 final_keyframes = keyframes
-                if (
-                    len(keyframes) > integrated_keyframe_count
-                    and now - last_live_integrate_at >= max(0.0, args.live_integrate_interval_s)
-                ):
-                    fusion.integrate(keyframes[-1])
-                    integrated_keyframe_count = len(keyframes)
-                    last_live_integrate_at = now
+                if preview_worker is not None:
+                    preview_worker.submit(keyframes[-1])
                     summary.integrated_keyframes += 1
 
             tracking_fps = summary.frames / max(0.001, now - summary.started_at)
@@ -339,15 +337,12 @@ def run_live_scan(
             if args.print_every > 0 and summary.frames % args.print_every == 0:
                 print(format_status_line(snapshot), flush=True)
 
-            if (
-                getattr(preview, "wants_mesh_preview", True)
-                and
-                summary.integrated_keyframes > 0
-                and now - last_preview_at >= max(0.05, args.preview_interval_s)
-            ):
-                preview.update_mesh(fusion.extract_preview())
+            preview_mesh = (
+                preview_worker.drain_latest_mesh() if preview_worker is not None else None
+            )
+            if preview_mesh is not None:
+                preview.update_mesh(preview_mesh)
                 summary.preview_updates += 1
-                last_preview_at = now
 
             if preview.poll():
                 break
@@ -358,21 +353,16 @@ def run_live_scan(
 
         summary.stopped_at = time.monotonic()
         if not args.no_export and final_keyframes:
-            final_fusion = fusion_factory(
-                intrinsics=intrinsics,
-                voxel_length_m=args.voxel_length_m,
-                sdf_trunc_m=args.sdf_trunc_m,
-                min_depth_m=args.min_depth_m,
-                max_depth_m=args.max_depth_m,
-                roi_min=roi_min,
-                roi_max=roi_max,
-                integration_width=None,
-                integration_height=None,
-            )
+            final_fusion = fusion_factory(**(preview_fusion_kwargs | {
+                "integration_width": None,
+                "integration_height": None,
+            }))
             summary.output_path = export_mesh(final_fusion.rebuild(final_keyframes), args.output)
     finally:
         if summary.stopped_at == 0.0:
             summary.stopped_at = time.monotonic()
+        if preview_worker is not None:
+            preview_worker.close()
         preview.close()
         capture.stop()
     return summary
