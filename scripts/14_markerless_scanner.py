@@ -109,7 +109,9 @@ def build_tracker(
         intrinsics,
         depth_processor=DepthProcessor(args.tracking_min_depth_m, args.tracking_max_depth_m),
         quality_gate=QualityGate(
-            min_depth_valid_ratio=args.min_depth_valid_ratio,
+            min_depth_valid_ratio=(
+                0.0 if args.backend == "background-assisted" else args.min_depth_valid_ratio
+            ),
             max_rmse_m=args.max_rmse_m,
             max_timestamp_gap_us=args.max_timestamp_gap_ms * 1000,
             lost_after_rejections=args.lost_after_rejections,
