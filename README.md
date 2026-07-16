@@ -114,6 +114,27 @@ Smoke test khong mo cua so va khong export mesh:
 C:\Users\TD-998\OrbbecGemini215-3DScanner\.venv\Scripts\python.exe scripts\14_markerless_scanner.py --headless --no-export --max-frames 120 --backend opencv --tracking-width 240 --tracking-height 150 --min-depth-m 0.20 --max-depth-m 0.30
 ```
 
+### Experimental markerless office-background scan
+
+Neu RGB bi den khi camera di qua canh vat, kiem tra depth-to-color alignment truoc:
+
+```powershell
+C:\Users\TD-998\OrbbecGemini215-3DScanner\.venv\Scripts\python.exe scripts\16_capture_diagnostic.py --alignment-target color --capture-seconds 10
+```
+
+JSON phai bao `alignment_target: "color"`, `color_visible: true`, va phan tram
+depth hop le. Sau do thu scan markerless trong phong co nen/bang dung yen:
+
+```powershell
+C:\Users\TD-998\OrbbecGemini215-3DScanner\.venv\Scripts\python.exe scripts\14_markerless_scanner.py --backend background-assisted --min-depth-m 0.20 --max-depth-m 0.40 --tracking-max-depth-m 0.60
+```
+
+Che do nay align **depth sang RGB**, giu RGB native cho tracking va chi fusion
+depth hop le trong ROI. Mesh la cac mat da quan sat, co the mo o day. Neu
+`color_visible` cung false hoac tracking van `LOST` khi qua canh hop, luu JSON
+diagnostic: day la bang chung can chuyen sang fallback visual-only/PnP thay vi
+tiep tuc noi long nguong fusion.
+
 Chay lai tracking tu session da record thi can truyen depth intrinsics cua session:
 
 ```powershell

@@ -49,6 +49,14 @@ def test_parser_uses_validated_25cm_live_scan_defaults() -> None:
     assert args.headless
 
 
+def test_parser_accepts_background_assisted_raw_rgb_backend() -> None:
+    module = load_markerless_scanner_module()
+
+    args = module.build_argument_parser().parse_args(["--backend", "background-assisted"])
+
+    assert args.backend == "background-assisted"
+
+
 def test_build_tracker_uses_live_scanner_rmse_limit() -> None:
     module = load_markerless_scanner_module()
     args = module.build_argument_parser().parse_args(
