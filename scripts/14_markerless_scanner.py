@@ -3,7 +3,8 @@
 import _bootstrap  # noqa: F401
 
 import argparse
-from dataclasses import dataclass
+from collections import Counter
+from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 import sys
@@ -130,6 +131,7 @@ class LiveScanSummary:
     integrated_keyframes: int = 0
     lost: int = 0
     preview_updates: int = 0
+    rejection_reasons: Counter[str] = field(default_factory=Counter)
     started_at: float = 0.0
     stopped_at: float = 0.0
     output_path: Path | None = None
@@ -143,6 +145,28 @@ class LiveScanSummary:
     @property
     def tracking_fps(self) -> float:
         return self.frames / self.elapsed_s if self.elapsed_s > 0.0 else 0.0
+
+    def record(self, result) -> None:
+        self.frames += 1
+        self.accepted += int(result.accepted)
+        self.rejected += int(not result.accepted)
+        self.keyframes += int(result.keyframe)
+        self.lost += int(result.state.value == "lost")
+        if not result.accepted:
+            self.rejection_reasons[result.reason or "unspecified"] += 1
+
+
+def format_summary(summary: LiveScanSummary) -> str:
+    reason_text = ",".join(
+        f"{reason}:{count}" for reason, count in summary.rejection_reasons.most_common()
+    ) or "none"
+    return (
+        "markerless_scan "
+        f"frames={summary.frames} accepted={summary.accepted} "
+        f"keyframes={summary.keyframes} integrated={summary.integrated_keyframes} "
+        f"lost={summary.lost} tracking_fps={summary.tracking_fps:.2f} "
+        f"rejected_reasons={reason_text} output={summary.output_path}"
+    )
 
 
 class NullLivePreview:
@@ -281,11 +305,7 @@ def run_live_scan(
             now = time.monotonic()
             packet = capture.read_packet()
             result = tracker.process(packet)
-            summary.frames += 1
-            summary.accepted += int(result.accepted)
-            summary.rejected += int(not result.accepted)
-            summary.keyframes += int(result.keyframe)
-            summary.lost += int(result.state.value == "lost")
+            summary.record(result)
             if result.accepted:
                 coverage.add_camera_position(result.camera_to_world[:3, 3])
 
@@ -426,13 +446,7 @@ def main(argv: list[str] | None = None) -> int:
         print(error)
         return 1
 
-    print(
-        "markerless_scan "
-        f"frames={summary.frames} accepted={summary.accepted} "
-        f"keyframes={summary.keyframes} integrated={summary.integrated_keyframes} "
-        f"lost={summary.lost} tracking_fps={summary.tracking_fps:.2f} "
-        f"output={summary.output_path}"
-    )
+    print(format_summary(summary))
     return 0
 
 

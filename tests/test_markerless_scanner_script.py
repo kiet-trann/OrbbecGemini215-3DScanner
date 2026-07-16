@@ -114,6 +114,28 @@ def test_build_tracker_uses_wider_tracking_depth_than_fusion_range() -> None:
     assert tracker.depth_processor.max_depth_m == 0.50
 
 
+def test_live_scan_summary_reports_rejection_reasons() -> None:
+    module = load_markerless_scanner_module()
+    summary = module.LiveScanSummary()
+    metrics = TrackingMetrics(0.0, 0.0, 0.0, 0.0, 0.2)
+    rejected = TrackingResult(
+        state=TrackingState.DEGRADED,
+        camera_to_world=np.eye(4),
+        metrics=metrics,
+        accepted=False,
+        keyframe=False,
+        reason="insufficient_3d_matches",
+    )
+
+    summary.record(rejected)
+    summary.record(rejected)
+
+    assert summary.frames == 2
+    assert summary.rejected == 2
+    assert summary.rejection_reasons == {"insufficient_3d_matches": 2}
+    assert "rejected_reasons=insufficient_3d_matches:2" in module.format_summary(summary)
+
+
 def test_live_scan_integrates_only_new_accepted_keyframes_and_stops_camera() -> None:
     module = load_markerless_scanner_module()
     stopped = []
