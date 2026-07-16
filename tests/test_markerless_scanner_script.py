@@ -187,34 +187,37 @@ def test_live_scan_integrates_only_new_accepted_keyframes_and_stops_camera() -> 
                 keyframe=is_keyframe,
             )
 
-    class FakeFusion:
-        def __init__(self, **kwargs) -> None:
-            self.kwargs = kwargs
-            self.integrated = []
+    created_workers = []
 
-        def integrate(self, keyframe: Keyframe) -> int:
-            self.integrated.append(keyframe)
-            return 4
+    class FakePreviewWorker:
+        def __init__(self, _fusion_factory, fusion_kwargs) -> None:
+            self.fusion_kwargs = fusion_kwargs
+            self.submitted = []
+            self.started = False
+            self.closed = False
+            created_workers.append(self)
 
-        def extract_preview(self):
-            return {"integrated": len(self.integrated)}
+        def start(self) -> None:
+            self.started = True
 
-    created_fusions = []
+        def submit(self, keyframe: Keyframe) -> None:
+            self.submitted.append(keyframe)
 
-    def fusion_factory(**kwargs):
-        fusion = FakeFusion(**kwargs)
-        created_fusions.append(fusion)
-        return fusion
+        def drain_latest_mesh(self):
+            return None
+
+        def close(self) -> None:
+            self.closed = True
+
+    class MeshPreview(module.NullLivePreview):
+        wants_mesh_preview = True
 
     args = module.build_argument_parser().parse_args(
         [
-            "--headless",
             "--no-export",
             "--max-frames",
             "3",
             "--warmup-frames",
-            "0",
-            "--live-integrate-interval-s",
             "0",
         ]
     )
@@ -223,21 +226,23 @@ def test_live_scan_integrates_only_new_accepted_keyframes_and_stops_camera() -> 
         args,
         capture_factory=FakeCapture,
         tracker_factory=FakeTracker,
-        fusion_factory=fusion_factory,
-        preview_factory=module.NullLivePreview,
+        preview_factory=MeshPreview,
+        preview_worker_factory=FakePreviewWorker,
     )
 
     assert stopped == [True]
     assert summary.frames == 3
     assert summary.integrated_keyframes == 2
-    assert len(created_fusions[0].integrated) == 2
-    assert created_fusions[0].kwargs["voxel_length_m"] == 0.0015
-    assert created_fusions[0].kwargs["min_depth_m"] == 0.20
-    assert created_fusions[0].kwargs["max_depth_m"] == 0.30
-    assert created_fusions[0].kwargs["integration_width"] == 320
-    assert created_fusions[0].kwargs["integration_height"] == 200
-    np.testing.assert_allclose(created_fusions[0].kwargs["roi_min"], [-0.175, -0.175, 0.075])
-    np.testing.assert_allclose(created_fusions[0].kwargs["roi_max"], [0.175, 0.175, 0.425])
+    assert created_workers[0].started
+    assert created_workers[0].closed
+    assert [keyframe.packet.sequence for keyframe in created_workers[0].submitted] == [0, 2]
+    assert created_workers[0].fusion_kwargs["voxel_length_m"] == 0.0015
+    assert created_workers[0].fusion_kwargs["min_depth_m"] == 0.20
+    assert created_workers[0].fusion_kwargs["max_depth_m"] == 0.30
+    assert created_workers[0].fusion_kwargs["integration_width"] == 320
+    assert created_workers[0].fusion_kwargs["integration_height"] == 200
+    np.testing.assert_allclose(created_workers[0].fusion_kwargs["roi_min"], [-0.175, -0.175, 0.075])
+    np.testing.assert_allclose(created_workers[0].fusion_kwargs["roi_max"], [0.175, 0.175, 0.425])
 
 
 def test_headless_live_scan_does_not_extract_preview_mesh() -> None:
@@ -317,7 +322,7 @@ def test_headless_live_scan_does_not_extract_preview_mesh() -> None:
         preview_factory=module.NullLivePreview,
     )
 
-    assert summary.integrated_keyframes == 1
+    assert summary.integrated_keyframes == 0
 
 
 def test_validate_export_mesh_rejects_many_fragment_components() -> None:
