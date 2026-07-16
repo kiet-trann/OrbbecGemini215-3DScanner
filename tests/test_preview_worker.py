@@ -70,3 +70,32 @@ def test_worker_drops_stale_pending_keyframes() -> None:
     assert wait_until(lambda: fusion.integrated == ["first", "latest"])
 
     worker.close()
+
+
+def test_worker_limits_preview_fusion_to_configured_interval() -> None:
+    class FakeFusion:
+        def __init__(self) -> None:
+            self.integrated = []
+
+        def integrate(self, keyframe) -> None:
+            self.integrated.append(keyframe)
+
+        def extract_preview(self):
+            return {"integrated": list(self.integrated)}
+
+    fusion = FakeFusion()
+    worker = LivePreviewWorker(
+        lambda **_kwargs: fusion,
+        {},
+        integration_interval_s=0.20,
+    )
+    worker.start()
+    worker.submit("first")
+    assert wait_until(lambda: fusion.integrated == ["first"])
+    worker.submit("latest")
+
+    time.sleep(0.05)
+    assert fusion.integrated == ["first"]
+    assert wait_until(lambda: fusion.integrated == ["first", "latest"])
+
+    worker.close()
