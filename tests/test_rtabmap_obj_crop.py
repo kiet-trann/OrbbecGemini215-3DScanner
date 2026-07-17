@@ -1,3 +1,4 @@
+import math
 from pathlib import Path
 
 import numpy as np
@@ -89,6 +90,22 @@ def test_perspective_projection_keeps_mesh_vertices_visible_after_rotation() -> 
 
     assert first is not None and second is not None
     assert first != second
+
+
+def test_perspective_projection_uses_rtabmap_axes_for_named_views() -> None:
+    vertices = [(-1.0, -1.0, -1.0), (1.0, 1.0, 1.0)]
+
+    def clip_distance(yaw: float, pitch: float, point: tuple[float, float, float]) -> float:
+        projection = perspective_projection_for_bounds(
+            vertices, viewport_width=800, viewport_height=600,
+            yaw=yaw, pitch=pitch, distance=3.5,
+        )
+        return float((projection.world_to_clip @ np.array((*point, 1.0)))[3])
+
+    assert clip_distance(-math.pi / 2.0, 0.0, (1.0, 0.0, 0.0)) < clip_distance(-math.pi / 2.0, 0.0, (-1.0, 0.0, 0.0))
+    assert clip_distance(math.pi / 2.0, 0.0, (-1.0, 0.0, 0.0)) < clip_distance(math.pi / 2.0, 0.0, (1.0, 0.0, 0.0))
+    assert clip_distance(0.0, math.pi / 2.0, (0.0, 0.0, 1.0)) < clip_distance(0.0, math.pi / 2.0, (0.0, 0.0, -1.0))
+    assert clip_distance(0.0, -math.pi / 2.0, (0.0, 0.0, -1.0)) < clip_distance(0.0, -math.pi / 2.0, (0.0, 0.0, 1.0))
 
 
 def test_preview_stride_caps_an_interactive_mesh() -> None:

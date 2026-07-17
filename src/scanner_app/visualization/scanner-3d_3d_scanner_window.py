@@ -58,8 +58,8 @@ def crop_preview_limits() -> tuple[int, int]:
 def crop_view_preset(name: str) -> tuple[float, float]:
     return {
         "reset": (0.65, -0.25),
-        "front": (math.pi, 0.0),
-        "back": (0.0, 0.0),
+        "front": (-math.pi / 2.0, 0.0),
+        "back": (math.pi / 2.0, 0.0),
         "top": (0.0, math.pi / 2.0),
         "bottom": (0.0, -math.pi / 2.0),
     }[name]
