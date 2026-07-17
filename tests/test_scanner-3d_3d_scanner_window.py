@@ -11,7 +11,10 @@ add_src_to_path()
 from scanner_app.rtabmap.activity import AutoPauseState
 from scanner_app.rtabmap.models import RuntimeStatus, SavedSession
 from scanner_app.rtabmap.windows_bridge import BridgeResult
-from scanner_app.visualization.scanner_3d_window import scanner_3dController
+from scanner_app.visualization.scanner_3d_window import (
+    scanner_3dController,
+    crop_preview_layout,
+)
 
 
 @dataclass
@@ -73,3 +76,13 @@ def test_manual_pause_and_resume_are_available_independently_of_auto_pause() -> 
     assert controller.request_pause() == BridgeResult(True, "Pause sent")
     assert controller.request_resume() == BridgeResult(True, "Resume sent")
     assert (bridge.pause_calls, bridge.resume_calls) == (1, 1)
+
+
+def test_crop_preview_separates_3d_navigation_from_rectangle_selection() -> None:
+    layout = crop_preview_layout()
+
+    assert layout.view_title == "3D model view"
+    assert layout.crop_title == "Crop here"
+    assert "Right-drag" in layout.view_instructions
+    assert "wheel" in layout.view_instructions
+    assert "Left-drag" in layout.crop_instructions
