@@ -1,51 +1,49 @@
-# Orbbec Gemini 215 Real-Time 3D Scanner Prototype
+# 3D Scanner 3D Scanner
 
-Prototype Python cho bai toan scan 3D real-time bang camera Orbbec Gemini 215.
+Ứng dụng Windows hỗ trợ quy trình scan 3D với **Orbbec Gemini 215** và
+**RTAB-Map**. RTAB-Map đảm nhiệm camera, SLAM và tạo model 3D; 3D Scanner 3D Scanner
+giúp mở RTAB-Map, quản lý session đã lưu, xuất OBJ và crop từng vật thể.
 
-Muc tieu dau tien:
+> RTAB-Map là tiến trình duy nhất được dùng camera và sở hữu session scan.
+> 3D Scanner 3D Scanner không thay thế RTAB-Map, không tự Stop và không tự lưu database.
 
-- Ket noi va lay RGB-D tu Orbbec Gemini 215.
-- Hien thi RGB, depth va point cloud real-time.
-- Tracking camera bang ArUco hoac AprilTag marker.
-- Ghep nhieu frame depth/point cloud thanh mo hinh 3D.
-- Xuat ket qua scan ra `.PLY`, chuan bi mo rong `.OBJ` va `.STL`.
-
-## Tech Stack
-
-- Python 3.10+
-- pyorbbecsdk2
-- OpenCV / opencv-contrib-python
-- Open3D
-- NumPy
-- SciPy
-
-## Project Layout
+## Quy trình chính
 
 ```text
-docs/                  Tai lieu yeu cau, kien truc, setup, quy trinh scan
-src/scanner_app/       Package chinh cua prototype
-scripts/               Script chay theo tung moc phat trien
-data/raw/              Du lieu RGB-D raw neu can luu tam
-data/sessions/         Du lieu moi lan scan
-data/calibration/      Intrinsic, marker config, calibration files
-outputs/ply/           Ket qua .PLY
-outputs/obj/           Ket qua .OBJ sau nay
-outputs/stl/           Ket qua .STL sau nay
-tests/                 Test cho module xu ly doc lap
+Mở 3D Scanner 3D Scanner
+        ↓
+Open RTAB-Map → quét vật thể → lưu database (.db)
+        ↓
+Refresh sessions → chọn database → Export raw OBJ
+        ↓
+Crop raw OBJ → khoanh vùng vật thể → Create cropped OBJ
 ```
 
-## Development Milestones
+Một database có thể chứa toàn bộ không gian đã quét. Bạn có thể xuất một raw
+OBJ của cả session, sau đó crop nhiều OBJ riêng cho từng vật thể. App không tự
+nhận diện số lượng vật thể trong database.
 
-1. `scripts/01_rgbd_viewer.py` - Mo camera va hien thi RGB/Depth.
-2. `scripts/02_export_pointcloud.py` - Xuat `single_frame.ply`.
-2b. `scripts/03_pointcloud_viewer.py` - Hien thi point cloud co mau real-time bang Open3D.
-3. `scripts/03_marker_tracking.py` - Detect marker va ve truc XYZ.
-4. `scripts/04_pose_estimation.py` - Tinh camera pose 4x4.
-5. `scripts/05_merge_pointcloud.py` - Ghep point cloud nhieu frame.
-6. `scripts/06_tsdf_fusion.py` - TSDF fusion bang Open3D.
-7. `scripts/07_export_mesh.py` - Tao mesh va xuat `.PLY` / `.OBJ` / `.STL`.
+## Yêu cầu
 
-## Quick Start
+- Windows 10/11.
+- Orbbec Gemini 215 và driver/SDK hoạt động.
+- Python environment `.venv` của dự án.
+- Git LFS khi clone repository: RTAB-Map runtime được lưu trong Git LFS.
+
+Nếu clone dự án trên máy khác, lấy runtime trước khi chạy app:
+
+```powershell
+git lfs pull
+```
+
+Sau đó cần có các file sau:
+
+```text
+third_party\rtabmap\RTABMap-0.23.1-win64\bin\RTABMap.exe
+third_party\rtabmap\RTABMap-0.23.1-win64\bin\rtabmap-export.exe
+```
+
+Nếu chưa có environment Python:
 
 ```powershell
 cd C:\Users\TD-998\OrbbecGemini215-3DScanner
@@ -54,202 +52,88 @@ python -m venv .venv
 pip install -e .[dev]
 ```
 
-Sau khi cai Orbbec SDK va cam camera qua USB 3.0:
+## Mở ứng dụng
+
+Nếu đã tạo shortcut Desktop, mở **3D Scanner 3D Scanner** từ shortcut đó.
+
+Hoặc chạy trực tiếp tại thư mục dự án:
 
 ```powershell
-python scripts/01_rgbd_viewer.py
+.\.venv\Scripts\pythonw.exe scripts\17_scanner_3d.py
 ```
 
-Chay hardware qualification gate truoc khi tiep tuc markerless tracking:
+Khi cần thấy lỗi trong terminal, dùng `python.exe` thay cho `pythonw.exe`:
 
 ```powershell
-C:\Users\TD-998\OrbbecGemini215-3DScanner\.venv\Scripts\python.exe scripts\12_hardware_qualification.py
+.\.venv\Scripts\python.exe scripts\17_scanner_3d.py
 ```
 
-Dung mot tam phang matte, khong bong, mau dong nhat, dat vuong goc voi camera va lap day nua giua
-khung depth. Chuan bi moc 0.20 m, 0.30 m va 0.40 m tu camera den mat phang. Giu camera, day USB 3.0
-va target co dinh trong warm-up 10 giay va tung lan capture. Script se ghi
-`data/sessions/qualification_<timestamp>.json`, in PASS/FAIL, va chi dat khi RGB-D >= 24 fps,
-IMU trong 190-210 Hz, central object valid ratio >= 0.70, median noise <= 1.0 mm va p90 noise <= 2.0 mm.
-Khong tiep tuc markerless tracking neu gate nay FAIL.
+## Scan và lưu session
 
-Chay markerless RGB-D tracking o Close-Up Precision Mode cho vat nho 5-30 cm, giu depth trong
-khoang 0.20-0.30 m va in moi ket qua tracking thanh mot dong JSON:
+1. Mở 3D Scanner 3D Scanner.
+2. Bấm **Open RTAB-Map**.
+3. Trong RTAB-Map, chọn nguồn Orbbec Gemini 215 rồi quét chậm quanh vật thể.
+   Cố gắng giữ camera thấy các bề mặt cần lấy và tránh chuyển động quá nhanh.
+4. Khi quét xong, Pause nếu cần kiểm tra model.
+5. Lưu session từ RTAB-Map: **File → Close database**, sau đó xác nhận lưu
+   database `.db`.
+6. Quay lại 3D Scanner 3D Scanner và bấm **Refresh sessions**.
 
-```powershell
-C:\Users\TD-998\OrbbecGemini215-3DScanner\.venv\Scripts\python.exe scripts\13_markerless_tracking.py --min-depth-m 0.20 --max-depth-m 0.30
+Database RTAB-Map mặc định nằm tại:
+
+```text
+C:\Users\TD-998\Documents\RTAB-Map
 ```
 
-Che do nhanh de tracking live vat nho o 25 cm, uu tien dat >=15 accepted updates/s:
+File `.db` không chỉ là một model OBJ. Nó lưu dữ liệu session/map của RTAB-Map
+(ảnh, depth, pose camera và dữ liệu SLAM) để có thể xuất lại hoặc xử lý tiếp.
 
-```powershell
-C:\Users\TD-998\OrbbecGemini215-3DScanner\.venv\Scripts\python.exe scripts\13_markerless_tracking.py --backend opencv --tracking-width 240 --tracking-height 150 --min-depth-m 0.20 --max-depth-m 0.30 --print-every 0
-```
+## Xuất raw OBJ
 
-Chay scan 3D markerless live cho vat nho nhu hop sua dat tren ban. Giu camera khoang 25 cm,
-di chuyen cham quanh vat; cua so RGB nam ben trai, model TSDF nam ben phai. Nhan `Q` hoac `ESC`
-de dung va ghi mesh PLY vao `outputs/ply`:
+1. Trong bảng **Saved RTAB-Map sessions**, chọn database cần dùng.
+2. Bấm **Export raw OBJ**.
+3. Chờ RTAB-Map xuất raw OBJ, MTL và texture.
 
-```powershell
-C:\Users\TD-998\OrbbecGemini215-3DScanner\.venv\Scripts\python.exe scripts\14_markerless_scanner.py --backend opencv --tracking-width 240 --tracking-height 150 --min-depth-m 0.20 --max-depth-m 0.30
-```
+Raw OBJ là toàn bộ hình học của session: có thể gồm vật thể, mặt bàn, nền hoặc
+nhiều vật thể. Nó luôn được giữ nguyên để bạn có thể crop lại nhiều lần.
 
-`--min-depth-m/--max-depth-m` la vung object/fusion de cat model hop sua. Tracking live mac dinh
-dung depth rong hon `0.20-0.50 m` de co du diem bam tren vat va mat ban gan. Neu RGB thay ro nhung
-status van `LOST` voi `reason=fitness_below_minimum` va `depth` thap, thu tang tracking range:
+## Crop OBJ
 
-```powershell
-C:\Users\TD-998\OrbbecGemini215-3DScanner\.venv\Scripts\python.exe scripts\14_markerless_scanner.py --backend opencv --tracking-width 240 --tracking-height 150 --min-depth-m 0.20 --max-depth-m 0.30 --tracking-max-depth-m 0.50 --print-every 10
-```
+1. Bấm **Crop raw OBJ** và chọn raw OBJ vừa xuất.
+2. Ở khung trái, dùng **chuột phải kéo** để xoay model và **con lăn** để zoom.
+   Các nút Front, Back, Top, Bottom đưa model về các góc chuẩn RTAB-Map.
+3. Ở khung phải, dùng **chuột trái kéo** một hình chữ nhật quanh phần muốn giữ.
+4. Bấm **Create cropped OBJ**.
 
-Neu van mat tracking khi cua so model dang cap nhat, giam tai preview de uu tien tracking:
+Kết quả crop là một bundle OBJ riêng gồm `.obj`, `.mtl` và texture. Chọn một
+hàng trong **Cropped OBJ outputs** rồi bấm **Open cropped OBJ** hoặc
+**Open output folder** để mở lại kết quả sau khi khởi động app.
 
-```powershell
-C:\Users\TD-998\OrbbecGemini215-3DScanner\.venv\Scripts\python.exe scripts\14_markerless_scanner.py --backend opencv --tracking-width 240 --tracking-height 150 --min-depth-m 0.20 --max-depth-m 0.30 --live-integrate-interval-s 1.0 --preview-interval-s 1.0 --print-every 10
-```
+## Auto-pause (thử nghiệm)
 
-Smoke test khong mo cua so va khong export mesh:
+Auto-pause là tính năng opt-in. Khi RTAB-Map đang scan và không có node map mới
+trong khoảng 3 giây, app chỉ gửi lệnh **Pause** để bạn kiểm tra model.
 
-```powershell
-C:\Users\TD-998\OrbbecGemini215-3DScanner\.venv\Scripts\python.exe scripts\14_markerless_scanner.py --headless --no-export --max-frames 120 --backend opencv --tracking-width 240 --tracking-height 150 --min-depth-m 0.20 --max-depth-m 0.30
-```
+- Không tự Stop RTAB-Map.
+- Không tự Close database.
+- Không tự lưu session.
+- Nếu hiện `Auto-pause unavailable`, app không có tín hiệu activity đủ tin cậy
+  từ session đang chạy; hãy Pause thủ công khi cần.
 
-### Experimental markerless office-background scan
+## Vị trí file
 
-Neu RGB bi den khi camera di qua canh vat, kiem tra depth-to-color alignment truoc:
+| Nội dung | Vị trí |
+| --- | --- |
+| Database RTAB-Map đã lưu | `C:\Users\TD-998\Documents\RTAB-Map` |
+| Runtime RTAB-Map | `third_party\rtabmap\RTABMap-0.23.1-win64` |
+| Raw OBJ và cropped OBJ | `outputs\scanner_3d` |
 
-```powershell
-C:\Users\TD-998\OrbbecGemini215-3DScanner\.venv\Scripts\python.exe scripts\16_capture_diagnostic.py --alignment-target color --capture-seconds 10
-```
+`third_party/rtabmap` được quản lý bằng Git LFS. Các file scan, raw OBJ và crop
+OBJ trong `outputs/scanner_3d` là dữ liệu sinh ra khi vận hành, không nên
+commit lên Git.
 
-JSON phai bao `alignment_target: "color"`, `color_visible: true`, va phan tram
-depth hop le. Sau do thu scan markerless trong phong co nen/bang dung yen:
+## Ghi chú về prototype cũ
 
-```powershell
-C:\Users\TD-998\OrbbecGemini215-3DScanner\.venv\Scripts\python.exe scripts\14_markerless_scanner.py --backend background-assisted --min-depth-m 0.20 --max-depth-m 0.40 --tracking-max-depth-m 0.60
-```
-
-Che do nay align **depth sang RGB**, giu RGB native cho tracking va chi fusion
-depth hop le trong ROI. Mesh la cac mat da quan sat, co the mo o day. Neu
-`color_visible` cung false hoac tracking van `LOST` khi qua canh hop, luu JSON
-diagnostic: day la bang chung can chuyen sang fallback visual-only/PnP thay vi
-tiep tuc noi long nguong fusion.
-
-Chay lai tracking tu session da record thi can truyen depth intrinsics cua session:
-
-```powershell
-C:\Users\TD-998\OrbbecGemini215-3DScanner\.venv\Scripts\python.exe scripts\13_markerless_tracking.py --replay data\sessions\scan_demo --max-frames 120 --intrinsics-fx 500 --intrinsics-fy 500 --intrinsics-cx 320 --intrinsics-cy 200 --intrinsics-width 640 --intrinsics-height 400
-```
-
-Xem point cloud co mau real-time:
-
-```powershell
-python scripts/03_pointcloud_viewer.py
-```
-
-Chay marker tracking voi ArUco `DICT_4X4_50`, marker vat ly 6 cm:
-
-```powershell
-python scripts/03_marker_tracking.py --marker-size-m 0.06
-```
-
-Tao marker PNG dung dictionary dang dung trong prototype:
-
-```powershell
-python scripts/00_generate_aruco_marker.py --dictionary DICT_4X4_50 --id 0 --marker-size-px 800 --border-px 160
-```
-
-File mac dinh duoc tao tai `data/calibration/aruco_DICT_4X4_50_id0_800px.png`.
-Khi test, neu log `markers=0 | rejected=0` thi camera chua thay candidate marker ro rang;
-neu `rejected` tang nhung `markers=0` thi thu tang kich thuoc marker, giu phang, tang anh sang,
-hoac kiem tra dung dictionary `DICT_4X4_50`.
-
-Smoke test khong mo cua so GUI:
-
-```powershell
-python scripts/03_marker_tracking.py --headless --max-frames 3
-```
-
-Luu camera pose 4x4 tu marker tracking vao `data/sessions/*.jsonl`:
-
-```powershell
-python scripts/04_pose_estimation.py --marker-size-m 0.06
-```
-
-Scan va ghep cac frame co marker thanh mot point cloud tong:
-
-```powershell
-python scripts/05_merge_pointcloud.py --marker-size-m 0.06 --max-frames 120
-```
-
-Khi marker de mat khoi khung hinh, co the dung theo so frame track duoc thay vi tong so frame camera:
-
-```powershell
-python scripts/05_merge_pointcloud.py --marker-size-m 0.06 --target-tracked-frames 50 --max-frames 1000
-```
-
-Giam dung luong PLY bang voxel downsample truoc khi ghi file:
-
-```powershell
-python scripts/05_merge_pointcloud.py --marker-size-m 0.06 --target-tracked-frames 50 --max-frames 1000 --voxel-size-m 0.003
-```
-
-Scan theo thoi gian that va chi lay moi N frame tracked de co du thoi gian di quanh vat:
-
-```powershell
-python scripts/05_merge_pointcloud.py --marker-size-m 0.06 --capture-seconds 30 --tracked-frame-stride 3 --min-depth-m 0.15 --max-depth-m 0.80 --voxel-size-m 0.002
-```
-
-Mo preview RGB trong luc merge de biet marker va vat co nam trong khung hinh khong:
-
-```powershell
-python scripts/05_merge_pointcloud.py --marker-size-m 0.06 --capture-seconds 30 --tracked-frame-stride 3 --preview --min-depth-m 0.15 --max-depth-m 0.80 --voxel-size-m 0.002
-```
-
-Voi vat nho nhu vo tai nghe, nen scan trong mot ROI theo he toa do marker de tranh ghep ca mat ban.
-Dat marker co dinh canh vat, mo preview, roi chinh cac moc `roi-*` sao cho hop 3D bao quanh vat:
-
-```powershell
-python scripts/05_merge_pointcloud.py --marker-size-m 0.06 --capture-seconds 35 --tracked-frame-stride 4 --preview --min-depth-m 0.15 --max-depth-m 0.70 --voxel-size-m 0.0015 --roi-min-x -0.20 --roi-max-x 0.04 --roi-min-y -0.15 --roi-max-y 0.12 --roi-min-z 0.01 --roi-max-z 0.16
-```
-
-Neu point cloud bi tach lop, dung TSDF fusion de tao mesh lien be mat hon thay vi chong cac point cloud tho:
-
-```powershell
-python scripts/06_tsdf_fusion.py --marker-size-m 0.06 --capture-seconds 45 --tracked-frame-stride 5 --preview --min-depth-m 0.15 --max-depth-m 0.70 --voxel-length-m 0.002 --sdf-trunc-m 0.010 --roi-min-x -0.28 --roi-max-x 0.08 --roi-min-y -0.18 --roi-max-y 0.16 --roi-min-z 0.015 --roi-max-z 0.14
-```
-
-Mo lai file PLY da scan bang Open3D, thay cho Windows 3D Viewer:
-
-```powershell
-python scripts/08_view_ply.py outputs/ply/merged_cloud_20260707_081312.ply
-```
-
-Chi in thong tin file, khong mo cua so GUI:
-
-```powershell
-python scripts/08_view_ply.py outputs/ply/merged_cloud_20260707_081312.ply --info-only
-```
-
-Cat bot mat ban/nen. Voi vat nho, mac dinh khong giu cum lon nhat de tranh lam mat vat:
-
-```powershell
-python scripts/09_crop_ply.py outputs/ply/merged_cloud_20260707_091637.ply
-python scripts/08_view_ply.py outputs/ply/merged_cloud_20260707_091637_cropped.ply
-```
-
-Dung point cloud da crop de thu dung mesh va xuat OBJ/STL/PLY:
-
-```powershell
-python scripts/10_reconstruct_mesh.py outputs/ply/earbud_case_tight_crop.ply --output outputs/obj/earbud_case.obj
-python scripts/10_reconstruct_mesh.py outputs/ply/earbud_case_tight_crop.ply --output outputs/stl/earbud_case.stl
-```
-
-## Prototype Definition of Done
-
-- Gemini 215 ket noi on dinh.
-- RGB + Depth hien thi real-time.
-- Point cloud single frame xuat duoc `.PLY`.
-- Marker tracking hoat dong va co camera pose hop le.
-- Nhieu frame duoc ghep thanh point cloud tong.
-- File `.PLY` mo duoc bang CloudCompare, MeshLab, Blender hoac Open3D.
+Repository vẫn chứa các script marker, markerless và fusion tự phát triển để
+tham khảo/đánh giá kỹ thuật. Chúng không phải luồng vận hành chính hiện tại.
+Để scan 3D với Gemini 215, dùng 3D Scanner 3D Scanner + RTAB-Map theo hướng dẫn trên.
