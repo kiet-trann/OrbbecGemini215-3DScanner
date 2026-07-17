@@ -2,6 +2,9 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 import math
 from pathlib import Path
+import tkinter as tk
+
+import pytest
 
 try:
     from test_support import add_src_to_path
@@ -13,9 +16,13 @@ add_src_to_path()
 from scanner_app.rtabmap.activity import AutoPauseState
 from scanner_app.rtabmap.models import RuntimeStatus, SavedSession
 from scanner_app.rtabmap.windows_bridge import BridgeResult
+from scanner_app.camera.models import CameraProfile, CameraSettingsSnapshot, CaptureConfig
 from scanner_app.visualization.crop_catalog import CroppedObjOutput
 from scanner_app.visualization.scanner_3d_window import (
     Scanner3DController,
+    Scanner3DWindow,
+    camera_control_state,
+    camera_settings_rows,
     crop_preview_limits,
     crop_preview_layout,
     crop_view_preset,
@@ -26,8 +33,14 @@ from scanner_app.visualization.scanner_3d_window import (
 @dataclass
 class FakeRuntime:
     status_value: RuntimeStatus = RuntimeStatus(True, "RTAB-Map is running")
+    launch_calls: int = 0
 
     def status(self) -> RuntimeStatus:
+        return self.status_value
+
+    def launch(self) -> RuntimeStatus:
+        self.launch_calls += 1
+        self.status_value = RuntimeStatus(True, "RTAB-Map started")
         return self.status_value
 
 
@@ -53,6 +66,105 @@ class FakeBridge:
 class FakeCatalog:
     def refresh(self) -> list[SavedSession]:
         return [SavedSession(Path("C:/sessions/scan.db"), 1024, modified_at=None)]  # type: ignore[arg-type]
+
+
+def make_snapshot(profile: CameraProfile = CameraProfile.NEAR) -> CameraSettingsSnapshot:
+    return CameraSettingsSnapshot(
+        profile=profile,
+        preflight_state="applied-and-verified",
+        confirmed_mode="Close_Up Precision Mode",
+        supported_modes=("Close_Up Precision Mode", "Long-distance Mode"),
+        device_name="Gemini 215",
+        serial_number="G215-123",
+        firmware_version="1.0.0",
+        capture_config=CaptureConfig(),
+        alignment_target="depth",
+        enabled_depth_filters=("TemporalFilter",),
+    )
+
+
+class FakePreflight:
+    def __init__(self) -> None:
+        self.applied_profiles: list[CameraProfile] = []
+        self.inspected_profiles: list[CameraProfile] = []
+
+    def apply(self, profile: CameraProfile) -> CameraSettingsSnapshot:
+        self.applied_profiles.append(profile)
+        return make_snapshot(profile)
+
+    def inspect(self, profile: CameraProfile) -> CameraSettingsSnapshot:
+        self.inspected_profiles.append(profile)
+        return make_snapshot(profile)
+
+
+def make_controller(*, runtime: FakeRuntime, preflight: FakePreflight | None = None) -> Scanner3DController:
+    return Scanner3DController(
+        runtime=runtime,
+        bridge=FakeBridge(),
+        monitor=FakeMonitor(AutoPauseState.ACTIVE),
+        catalog=FakeCatalog(),
+        preflight=preflight or FakePreflight(),
+    )
+
+
+def test_apply_and_launch_runs_verified_preflight_before_runtime_launch() -> None:
+    runtime = FakeRuntime(RuntimeStatus(False, "RTAB-Map is not running"))
+    preflight = FakePreflight()
+    controller = make_controller(runtime=runtime, preflight=preflight)
+
+    result = controller.apply_and_launch()
+
+    assert preflight.applied_profiles == [CameraProfile.NEAR]
+    assert runtime.launch_calls == 1
+    assert result.running
+
+
+def test_controller_blocks_profile_changes_and_preflight_while_rtabmap_runs() -> None:
+    controller = make_controller(runtime=FakeRuntime(RuntimeStatus(True, "RTAB-Map is running")))
+
+    with pytest.raises(RuntimeError, match="locked"):
+        controller.set_camera_profile(CameraProfile.FAR)
+    with pytest.raises(RuntimeError, match="locked"):
+        controller.inspect_camera()
+
+
+def test_camera_settings_rows_show_defaults_before_inspection_and_snapshot_afterward() -> None:
+    assert ("Preflight", "Not applied") in camera_settings_rows(CameraProfile.NEAR, None)
+    assert ("Depth work mode", "Unavailable until inspection") in camera_settings_rows(
+        CameraProfile.NEAR, None
+    )
+
+    rows = camera_settings_rows(CameraProfile.NEAR, make_snapshot())
+
+    assert ("Depth work mode", "Close_Up Precision Mode") in rows
+    assert ("Supported depth modes", "Close_Up Precision Mode; Long-distance Mode") in rows
+    assert ("Enabled depth filters", "TemporalFilter") in rows
+
+
+def test_camera_control_state_disables_profile_changes_when_locked() -> None:
+    assert camera_control_state(False) == tk.NORMAL
+    assert camera_control_state(True) == tk.DISABLED
+
+
+def test_launch_keeps_preflight_error_visible_after_refresh() -> None:
+    class FailingController:
+        def apply_and_launch(self):
+            raise RuntimeError("No Orbbec camera found")
+
+    class Status:
+        value = ""
+
+        def set(self, value: str) -> None:
+            self.value = value
+
+    window = object.__new__(Scanner3DWindow)
+    window.controller = FailingController()
+    window.status = Status()
+    window.refresh = lambda: window.status.set("RTAB-Map is not running")
+
+    window.launch()
+
+    assert window.status.value == "No Orbbec camera found"
 
 
 def test_dashboard_marks_auto_pause_unavailable_when_activity_is_uncertain() -> None:

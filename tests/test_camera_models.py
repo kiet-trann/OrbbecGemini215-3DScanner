@@ -5,10 +5,21 @@ import pytest
 
 from scanner_app.camera.models import (
     CameraIntrinsics,
+    CameraProfile,
     CaptureConfig,
     ImuSample,
     SynchronizedFramePacket,
 )
+
+
+def test_camera_profiles_have_operator_labels_ranges_and_mode_matchers() -> None:
+    assert CameraProfile.NEAR.display_name == "Near — Close-up Precision"
+    assert CameraProfile.NEAR.distance_range_m == (0.15, 0.32)
+    assert CameraProfile.NEAR.mode_name_matches("Close_Up Precision Mode")
+    assert CameraProfile.FAR.display_name == "Far — Long-distance"
+    assert CameraProfile.FAR.distance_range_m == (0.20, 0.70)
+    assert CameraProfile.FAR.mode_name_matches("Long-distance Mode")
+    assert CameraProfile.FAR.mode_name_matches("Extended Distance Mode")
 
 
 def test_packet_exposes_metric_depth_and_immutable_imu_tuple() -> None:
