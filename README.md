@@ -1,16 +1,16 @@
-# 3D Scanner 3D Scanner
+# 3D Scanner
 
 Ứng dụng Windows hỗ trợ quy trình scan 3D với **Orbbec Gemini 215** và
-**RTAB-Map**. RTAB-Map đảm nhiệm camera, SLAM và tạo model 3D; 3D Scanner 3D Scanner
+**RTAB-Map**. RTAB-Map đảm nhiệm camera, SLAM và tạo model 3D; 3D Scanner
 giúp mở RTAB-Map, quản lý session đã lưu, xuất OBJ và crop từng vật thể.
 
 > RTAB-Map là tiến trình duy nhất được dùng camera và sở hữu session scan.
-> 3D Scanner 3D Scanner không thay thế RTAB-Map, không tự Stop và không tự lưu database.
+> 3D Scanner không thay thế RTAB-Map, không tự Stop và không tự lưu database.
 
 ## Quy trình chính
 
 ```text
-Mở 3D Scanner 3D Scanner
+Mở 3D Scanner
         ↓
 Open RTAB-Map → quét vật thể → lưu database (.db)
         ↓
@@ -54,30 +54,30 @@ pip install -e .[dev]
 
 ## Mở ứng dụng
 
-Nếu đã tạo shortcut Desktop, mở **3D Scanner 3D Scanner** từ shortcut đó.
+Nếu đã tạo shortcut Desktop, mở **3D Scanner** từ shortcut đó.
 
 Hoặc chạy trực tiếp tại thư mục dự án:
 
 ```powershell
-.\.venv\Scripts\pythonw.exe scripts\17_scanner_3d.py
+.\.venv\Scripts\pythonw.exe scripts\17_3d_scanner.py
 ```
 
 Khi cần thấy lỗi trong terminal, dùng `python.exe` thay cho `pythonw.exe`:
 
 ```powershell
-.\.venv\Scripts\python.exe scripts\17_scanner_3d.py
+.\.venv\Scripts\python.exe scripts\17_3d_scanner.py
 ```
 
 ## Scan và lưu session
 
-1. Mở 3D Scanner 3D Scanner.
+1. Mở 3D Scanner.
 2. Bấm **Open RTAB-Map**.
 3. Trong RTAB-Map, chọn nguồn Orbbec Gemini 215 rồi quét chậm quanh vật thể.
    Cố gắng giữ camera thấy các bề mặt cần lấy và tránh chuyển động quá nhanh.
 4. Khi quét xong, Pause nếu cần kiểm tra model.
 5. Lưu session từ RTAB-Map: **File → Close database**, sau đó xác nhận lưu
    database `.db`.
-6. Quay lại 3D Scanner 3D Scanner và bấm **Refresh sessions**.
+6. Quay lại 3D Scanner và bấm **Refresh sessions**.
 
 Database RTAB-Map mặc định nằm tại:
 
@@ -136,4 +136,4 @@ commit lên Git.
 
 Repository vẫn chứa các script marker, markerless và fusion tự phát triển để
 tham khảo/đánh giá kỹ thuật. Chúng không phải luồng vận hành chính hiện tại.
-Để scan 3D với Gemini 215, dùng 3D Scanner 3D Scanner + RTAB-Map theo hướng dẫn trên.
+Để scan 3D với Gemini 215, dùng 3D Scanner + RTAB-Map theo hướng dẫn trên.
