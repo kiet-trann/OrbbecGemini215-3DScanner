@@ -14,9 +14,10 @@ from scanner_app.rtabmap.activity import ActivityMonitor, AutoPauseState, Sqlite
 from scanner_app.rtabmap.catalog import SessionCatalog
 from scanner_app.rtabmap.exporter import ExportRequest, ExportService
 from scanner_app.rtabmap.models import RuntimeStatus, SavedSession
-from scanner_app.rtabmap.obj_crop import CropRectangle, crop_obj_bundle, perspective_projection_for_bounds
+from scanner_app.rtabmap.obj_crop import CropRectangle, CropResult, crop_obj_bundle, perspective_projection_for_bounds
 from scanner_app.rtabmap.runtime import RtabmapRuntime
 from scanner_app.rtabmap.windows_bridge import BridgeResult, WindowsRtabmapBridge
+from scanner_app.visualization.open_actions import OpenActionService
 
 
 @dataclass(frozen=True)
@@ -88,6 +89,8 @@ class scanner_3dWindow:
         self.status = tk.StringVar(value="Ready")
         self.auto_status = tk.StringVar(value="Auto-pause is off")
         self.sessions: list[SavedSession] = []
+        self.latest_cropped_obj: Path | None = None
+        self.open_actions = OpenActionService()
         root.title("3D Scanner 3D Scanner")
         root.geometry("760x520")
         self._build()
@@ -120,6 +123,14 @@ class scanner_3dWindow:
         actions = ttk.Frame(frame)
         actions.pack(fill=tk.X, pady=(8, 0))
         ttk.Button(actions, text="Refresh sessions", command=self.refresh).pack(side=tk.LEFT)
+        self.open_folder_button = ttk.Button(
+            actions, text="Open output folder", command=self.open_latest_output_folder, state=tk.DISABLED
+        )
+        self.open_folder_button.pack(side=tk.RIGHT, padx=(0, 8))
+        self.open_obj_button = ttk.Button(
+            actions, text="Open cropped OBJ", command=self.open_latest_cropped_obj, state=tk.DISABLED
+        )
+        self.open_obj_button.pack(side=tk.RIGHT, padx=(0, 8))
         ttk.Button(actions, text="Crop raw OBJ", command=self.choose_crop_source).pack(side=tk.RIGHT, padx=(0, 8))
         ttk.Button(actions, text="Export raw OBJ", command=self.export_selected).pack(side=tk.RIGHT)
 
@@ -301,10 +312,28 @@ class scanner_3dWindow:
     def _crop_worker(self, source: Path, rectangle: CropRectangle, projection, output_dir: Path) -> None:
         try:
             result = crop_obj_bundle(source, rectangle, projection, output_dir)
-            message = f"Cropped OBJ: {result.obj}"
         except (OSError, ValueError) as error:
-            message = f"Crop failed: {error}"
-        self.root.after(0, lambda: self.status.set(message))
+            self.root.after(0, self.status.set, f"Crop failed: {error}")
+            return
+        self.root.after(0, lambda: self._record_crop_result(result))
+
+    def _record_crop_result(self, result: CropResult) -> None:
+        self.latest_cropped_obj = result.obj
+        self.open_obj_button.configure(state=tk.NORMAL)
+        self.open_folder_button.configure(state=tk.NORMAL)
+        self.status.set(f"Cropped OBJ: {result.obj}")
+
+    def open_latest_cropped_obj(self) -> None:
+        if self.latest_cropped_obj is None:
+            self.status.set("Crop an OBJ first")
+            return
+        self.status.set(self.open_actions.open_obj(self.latest_cropped_obj).message)
+
+    def open_latest_output_folder(self) -> None:
+        if self.latest_cropped_obj is None:
+            self.status.set("Crop an OBJ first")
+            return
+        self.status.set(self.open_actions.open_folder(self.latest_cropped_obj).message)
 
 
 def _read_obj_mesh(path: Path) -> tuple[list[tuple[float, float, float]], list[tuple[int, ...]]]:
