@@ -15,6 +15,7 @@ from scanner_app.rtabmap.windows_bridge import BridgeResult
 from scanner_app.visualization.crop_catalog import CroppedObjOutput
 from scanner_app.visualization.scanner_3d_window import (
     scanner_3dController,
+    crop_preview_limits,
     crop_preview_layout,
     selected_crop_path,
 )
@@ -102,3 +103,10 @@ def test_selected_crop_path_returns_selected_catalog_output(tmp_path: Path) -> N
     assert selected_crop_path([output], ("0",)) == output.path
     assert selected_crop_path([output], ()) is None
     assert selected_crop_path([output], ("5",)) is None
+
+
+def test_crop_preview_uses_less_detail_while_rotating() -> None:
+    moving, settled = crop_preview_limits()
+
+    assert moving < settled
+    assert moving == 700

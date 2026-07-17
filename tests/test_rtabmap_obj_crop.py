@@ -15,7 +15,9 @@ from scanner_app.rtabmap.obj_crop import (
     CropRectangle,
     crop_obj_bundle,
     perspective_projection_for_bounds,
+    preview_stride,
     projection_for_bounds,
+    sample_projected_vertices,
 )
 
 
@@ -86,3 +88,17 @@ def test_perspective_projection_keeps_mesh_vertices_visible_after_rotation() -> 
 
     assert first is not None and second is not None
     assert first != second
+
+
+def test_preview_stride_caps_an_interactive_mesh() -> None:
+    assert preview_stride(2_800, 700) == 4
+    assert preview_stride(1_401, 700) == 3
+    assert preview_stride(50, 700) == 1
+
+
+def test_sample_projected_vertices_uses_the_crop_projection() -> None:
+    projection = CameraProjection(np.eye(4), viewport_width=800, viewport_height=600)
+
+    points = sample_projected_vertices([(-1, -1, 0), (1, 1, 0)], projection, maximum_items=10)
+
+    assert points == [(0.0, 600.0), (800.0, 0.0)]
