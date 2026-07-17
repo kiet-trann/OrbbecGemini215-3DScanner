@@ -55,6 +55,32 @@ def projection_for_bounds(
     return CameraProjection(matrix, viewport_width=viewport_width, viewport_height=viewport_height)
 
 
+def perspective_projection_for_bounds(
+    vertices: list[tuple[float, float, float]], *, viewport_width: int, viewport_height: int,
+    yaw: float, pitch: float, distance: float,
+) -> CameraProjection:
+    points = np.asarray(vertices, dtype=np.float64)
+    minimum, maximum = points.min(axis=0), points.max(axis=0)
+    extent = max(float(np.max(maximum - minimum)), 1e-9)
+    model = np.eye(4, dtype=np.float64)
+    model[:3, :3] *= 2.0 / extent
+    model[:3, 3] = -(maximum + minimum) / extent
+    cy, sy = np.cos(yaw), np.sin(yaw)
+    cx, sx = np.cos(pitch), np.sin(pitch)
+    rotate_y = np.array([[cy, 0, sy, 0], [0, 1, 0, 0], [-sy, 0, cy, 0], [0, 0, 0, 1]], dtype=np.float64)
+    rotate_x = np.array([[1, 0, 0, 0], [0, cx, -sx, 0], [0, sx, cx, 0], [0, 0, 0, 1]], dtype=np.float64)
+    view = np.eye(4, dtype=np.float64)
+    view[2, 3] = -distance
+    aspect, near, far = viewport_width / viewport_height, 0.1, 100.0
+    focal = 1.0 / np.tan(np.deg2rad(50.0) / 2.0)
+    perspective = np.array([
+        [focal / aspect, 0, 0, 0], [0, focal, 0, 0],
+        [0, 0, -(far + near) / (far - near), -(2 * far * near) / (far - near)],
+        [0, 0, -1, 0],
+    ], dtype=np.float64)
+    return CameraProjection(perspective @ view @ rotate_x @ rotate_y @ model, viewport_width, viewport_height)
+
+
 def crop_obj_bundle(source_obj: Path, rectangle: CropRectangle, projection: CameraProjection, output_dir: Path) -> CropResult:
     lines = source_obj.read_text(encoding="utf-8", errors="replace").splitlines()
     vertices: list[tuple[float, float, float, float]] = []

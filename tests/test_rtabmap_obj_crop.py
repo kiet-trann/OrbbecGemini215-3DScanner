@@ -10,7 +10,13 @@ except ImportError:
 
 add_src_to_path()
 
-from scanner_app.rtabmap.obj_crop import CameraProjection, CropRectangle, crop_obj_bundle, projection_for_bounds
+from scanner_app.rtabmap.obj_crop import (
+    CameraProjection,
+    CropRectangle,
+    crop_obj_bundle,
+    perspective_projection_for_bounds,
+    projection_for_bounds,
+)
 
 
 def write_bundle(directory: Path) -> Path:
@@ -63,3 +69,20 @@ def test_projection_for_bounds_maps_the_mesh_extent_to_the_preview() -> None:
 
     assert projection.project((-2.0, -1.0, 0.0, 1.0)) == (0.0, 600.0)
     assert projection.project((2.0, 3.0, 4.0, 1.0)) == (800.0, 0.0)
+
+
+def test_perspective_projection_keeps_mesh_vertices_visible_after_rotation() -> None:
+    projection = perspective_projection_for_bounds(
+        [(-1.0, -1.0, -1.0), (1.0, 1.0, 1.0)],
+        viewport_width=800,
+        viewport_height=600,
+        yaw=0.6,
+        pitch=-0.25,
+        distance=3.5,
+    )
+
+    first = projection.project((-1.0, -1.0, -1.0, 1.0))
+    second = projection.project((1.0, 1.0, 1.0, 1.0))
+
+    assert first is not None and second is not None
+    assert first != second
