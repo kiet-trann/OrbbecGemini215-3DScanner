@@ -14,7 +14,7 @@ from scanner_app.rtabmap.activity import ActivityMonitor, AutoPauseState, Sqlite
 from scanner_app.rtabmap.catalog import SessionCatalog
 from scanner_app.rtabmap.exporter import ExportRequest, ExportService
 from scanner_app.rtabmap.models import RuntimeStatus, SavedSession
-from scanner_app.rtabmap.obj_crop import CropRectangle, crop_obj_bundle, projection_for_bounds
+from scanner_app.rtabmap.obj_crop import CropRectangle, crop_obj_bundle, perspective_projection_for_bounds
 from scanner_app.rtabmap.runtime import RtabmapRuntime
 from scanner_app.rtabmap.windows_bridge import BridgeResult, WindowsRtabmapBridge
 
@@ -168,23 +168,36 @@ class scanner_3dWindow:
             self._show_crop_preview(Path(selected))
 
     def _show_crop_preview(self, source_obj: Path) -> None:
-        vertices = _read_obj_vertices(source_obj)
+        vertices, faces = _read_obj_mesh(source_obj)
         if not vertices:
             messagebox.showerror("3D Scanner 3D Scanner", "The OBJ contains no vertices.")
             return
         width, height = 700, 500
-        projection = projection_for_bounds(vertices, viewport_width=width, viewport_height=height)
         dialog = tk.Toplevel(self.root)
         dialog.title(f"Crop preview — {source_obj.name}")
-        ttk.Label(dialog, text="Drag one rectangle around the object, then create a separate cropped OBJ.").pack(padx=10, pady=(10, 4))
+        ttk.Label(dialog, text="Right-drag to rotate · wheel to zoom · left-drag one crop rectangle.").pack(padx=10, pady=(10, 4))
         canvas = tk.Canvas(dialog, width=width, height=height, background="#171717", cursor="crosshair")
         canvas.pack(padx=10, pady=6)
-        for vertex in vertices:
-            point = projection.project((*vertex, 1.0))
-            if point is not None:
-                x, y = point
-                canvas.create_line(x, y, x + 1, y, fill="#8fd3ff")
-        selection: dict[str, float | int | None] = {"x": None, "y": None, "item": None}
+        state: dict[str, float | int | None | object] = {"yaw": 0.65, "pitch": -0.25, "distance": 3.5,
+                                                           "x": None, "y": None, "item": None,
+                                                           "rotate_x": None, "rotate_y": None, "projection": None}
+
+        def render() -> None:
+            projection = perspective_projection_for_bounds(
+                vertices, viewport_width=width, viewport_height=height,
+                yaw=float(state["yaw"]), pitch=float(state["pitch"]), distance=float(state["distance"]),
+            )
+            state["projection"] = projection
+            canvas.delete("mesh")
+            stride = max(1, len(faces) // 2800)
+            for number, face in enumerate(faces[::stride]):
+                points = [projection.project((*vertices[index - 1], 1.0)) for index in face]
+                if all(point is not None for point in points):
+                    flat = [coordinate for point in points for coordinate in point]
+                    shade = 55 + (number % 4) * 12
+                    canvas.create_polygon(*flat, fill=f"#{15:02x}{shade:02x}{min(155, shade + 55):02x}", outline="#255a73", tags="mesh")
+
+        render()
 
         def start(event) -> None:
             selection["x"], selection["y"] = event.x, event.y
@@ -194,6 +207,23 @@ class scanner_3dWindow:
             if selection["item"] is not None:
                 canvas.coords(selection["item"], selection["x"], selection["y"], event.x, event.y)
 
+        def rotate_start(event) -> None:
+            state["rotate_x"], state["rotate_y"] = event.x, event.y
+
+        def rotate(event) -> None:
+            if state["rotate_x"] is None:
+                return
+            state["yaw"] = float(state["yaw"]) + (event.x - float(state["rotate_x"])) * 0.012
+            state["pitch"] = max(-1.35, min(1.35, float(state["pitch"]) + (event.y - float(state["rotate_y"])) * 0.012))
+            state["rotate_x"], state["rotate_y"] = event.x, event.y
+            selection["item"] = None
+            render()
+
+        def zoom(event) -> None:
+            state["distance"] = max(2.2, min(8.0, float(state["distance"]) - event.delta / 1200.0))
+            selection["item"] = None
+            render()
+
         def create_crop() -> None:
             if selection["item"] is None:
                 messagebox.showinfo("3D Scanner 3D Scanner", "Drag a rectangle around the object first.", parent=dialog)
@@ -202,11 +232,14 @@ class scanner_3dWindow:
             rectangle = CropRectangle(min(x1, x2), min(y1, y2), max(x1, x2), max(y1, y2))
             output_dir = source_obj.parent.parent / f"cropped_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
             self.status.set("Creating cropped OBJ in the background...")
-            threading.Thread(target=self._crop_worker, args=(source_obj, rectangle, projection, output_dir), daemon=True).start()
+            threading.Thread(target=self._crop_worker, args=(source_obj, rectangle, state["projection"], output_dir), daemon=True).start()
             dialog.destroy()
 
         canvas.bind("<Button-1>", start)
         canvas.bind("<B1-Motion>", drag)
+        canvas.bind("<Button-3>", rotate_start)
+        canvas.bind("<B3-Motion>", rotate)
+        canvas.bind("<MouseWheel>", zoom)
         ttk.Button(dialog, text="Create cropped OBJ", command=create_crop).pack(pady=(0, 10))
 
     def _crop_worker(self, source: Path, rectangle: CropRectangle, projection, output_dir: Path) -> None:
@@ -218,13 +251,16 @@ class scanner_3dWindow:
         self.root.after(0, lambda: self.status.set(message))
 
 
-def _read_obj_vertices(path: Path) -> list[tuple[float, float, float]]:
+def _read_obj_mesh(path: Path) -> tuple[list[tuple[float, float, float]], list[tuple[int, ...]]]:
     vertices: list[tuple[float, float, float]] = []
+    faces: list[tuple[int, ...]] = []
     for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
         if line.startswith("v "):
             values = line.split()
             vertices.append((float(values[1]), float(values[2]), float(values[3])))
-    return vertices
+        elif line.startswith("f "):
+            faces.append(tuple(int(token.split("/")[0]) for token in line.split()[1:]))
+    return vertices, faces
 
 
 def main() -> int:
