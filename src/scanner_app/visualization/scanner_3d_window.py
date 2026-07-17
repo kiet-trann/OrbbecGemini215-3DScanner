@@ -21,8 +21,8 @@ from scanner_app.rtabmap.obj_crop import (
 )
 from scanner_app.rtabmap.runtime import RtabmapRuntime
 from scanner_app.rtabmap.windows_bridge import BridgeResult, WindowsRtabmapBridge
-from scanner_app.camera.models import CameraProfile, CameraSettingsSnapshot
-from scanner_app.camera.preflight import CameraPreflight
+from scanner_app.camera.models import CameraProfile, CameraSettingsSnapshot, CaptureConfig
+from scanner_app.camera.preflight import CameraPreflight, CameraPreflightError
 from scanner_app.visualization.crop_catalog import CroppedObjCatalog, CroppedObjOutput
 from scanner_app.visualization.open_actions import OpenActionService
 
@@ -37,6 +37,41 @@ class DashboardState:
     camera_profile: CameraProfile
     camera_snapshot: CameraSettingsSnapshot | None
     camera_controls_locked: bool
+
+
+def camera_control_state(locked: bool) -> str:
+    return tk.DISABLED if locked else tk.NORMAL
+
+
+def camera_settings_rows(
+    profile: CameraProfile, snapshot: CameraSettingsSnapshot | None
+) -> tuple[tuple[str, str], ...]:
+    config = snapshot.capture_config if snapshot is not None else CaptureConfig()
+    preflight_state = snapshot.preflight_state if snapshot is not None else "Not applied"
+    mode = snapshot.confirmed_mode if snapshot is not None else "Unavailable until inspection"
+    supported_modes = "; ".join(snapshot.supported_modes) if snapshot is not None else "Unavailable"
+    device_name = snapshot.device_name if snapshot is not None else "Unavailable until inspection"
+    serial = snapshot.serial_number if snapshot is not None else "Unavailable until inspection"
+    firmware = snapshot.firmware_version if snapshot is not None else "Unavailable until inspection"
+    alignment = snapshot.alignment_target if snapshot is not None else "Unavailable until inspection"
+    filters = "; ".join(snapshot.enabled_depth_filters) if snapshot is not None else "Unavailable"
+    return (
+        ("Profile", profile.display_name),
+        ("Profile range", f"{profile.distance_range_m[0]:.2f}-{profile.distance_range_m[1]:.2f} m"),
+        ("Preflight", preflight_state),
+        ("Depth work mode", mode or "Unavailable"),
+        ("Supported depth modes", supported_modes or "Unavailable"),
+        ("Device", device_name or "Unavailable"),
+        ("Serial number", serial or "Unavailable"),
+        ("Firmware", firmware or "Unavailable"),
+        ("Depth stream", f"{config.depth_width}x{config.depth_height} {config.depth_format} @ {config.depth_fps} FPS"),
+        ("Color stream", f"{config.color_width}x{config.color_height} {config.color_format} @ {config.color_fps} FPS"),
+        ("Depth range", f"{config.depth_min_m:.2f}-{config.depth_max_m:.2f} m"),
+        ("Normal scan range", f"{config.normal_scan_min_m:.2f}-{config.normal_scan_max_m:.2f} m"),
+        ("Alignment target", alignment),
+        ("IMU", f"{config.imu_hz} Hz"),
+        ("Enabled depth filters", filters or "None"),
+    )
 
 
 @dataclass(frozen=True)
@@ -159,12 +194,13 @@ class Scanner3DWindow:
         self.auto_enabled = tk.BooleanVar(value=False)
         self.status = tk.StringVar(value="Ready")
         self.auto_status = tk.StringVar(value="Auto-pause is off")
+        self.camera_profile_value = tk.StringVar(value=CameraProfile.NEAR.display_name)
         self.sessions: list[SavedSession] = []
         self.crop_catalog = CroppedObjCatalog(output_root)
         self.cropped_outputs: list[CroppedObjOutput] = []
         self.open_actions = OpenActionService()
         root.title("3D Scanner")
-        root.geometry("760x720")
+        root.geometry("760x900")
         self._build()
         self.refresh()
         self._poll_auto_pause()
@@ -174,9 +210,38 @@ class Scanner3DWindow:
         frame.pack(fill=tk.BOTH, expand=True)
         ttk.Label(frame, text="3D Scanner", font=("Segoe UI", 18, "bold")).pack(anchor=tk.W)
         ttk.Label(frame, textvariable=self.status).pack(anchor=tk.W, pady=(2, 10))
+        camera_setup = ttk.LabelFrame(frame, text="Camera setup (before scan)", padding=8)
+        camera_setup.pack(fill=tk.X, pady=(0, 10))
+        profile_controls = ttk.Frame(camera_setup)
+        profile_controls.pack(fill=tk.X)
+        ttk.Label(profile_controls, text="Scan profile:").pack(side=tk.LEFT)
+        self.camera_profile_combo = ttk.Combobox(
+            profile_controls,
+            textvariable=self.camera_profile_value,
+            values=tuple(profile.display_name for profile in CameraProfile),
+            state="readonly",
+            width=28,
+        )
+        self.camera_profile_combo.pack(side=tk.LEFT, padx=(6, 8))
+        self.camera_profile_combo.bind("<<ComboboxSelected>>", self._select_camera_profile)
+        self.inspect_camera_button = ttk.Button(
+            profile_controls, text="Refresh camera settings", command=self.inspect_camera
+        )
+        self.inspect_camera_button.pack(side=tk.LEFT, padx=(0, 6))
+        self.apply_camera_button = ttk.Button(
+            profile_controls, text="Apply & Open RTAB-Map", command=self.launch
+        )
+        self.apply_camera_button.pack(side=tk.LEFT)
+        self.camera_settings_tree = ttk.Treeview(
+            camera_setup, columns=("value",), show="tree headings", height=8
+        )
+        self.camera_settings_tree.heading("#0", text="Setting")
+        self.camera_settings_tree.heading("value", text="Current value")
+        self.camera_settings_tree.column("#0", width=190)
+        self.camera_settings_tree.column("value", width=510)
+        self.camera_settings_tree.pack(fill=tk.X, pady=(8, 0))
         controls = ttk.Frame(frame)
         controls.pack(fill=tk.X)
-        ttk.Button(controls, text="Open RTAB-Map", command=self.launch).pack(side=tk.LEFT, padx=(0, 6))
         ttk.Button(controls, text="Pause", command=lambda: self._bridge_action(self.controller.request_pause)).pack(side=tk.LEFT, padx=6)
         ttk.Button(controls, text="Resume", command=lambda: self._bridge_action(self.controller.request_resume)).pack(side=tk.LEFT, padx=6)
         ttk.Checkbutton(controls, text="Auto-pause (experimental)", variable=self.auto_enabled,
@@ -220,18 +285,61 @@ class Scanner3DWindow:
         ttk.Button(actions, text="Export raw OBJ", command=self.export_selected).pack(side=tk.RIGHT)
 
     def launch(self) -> None:
-        self.status.set(self.controller.launch().message)
+        try:
+            message = self.controller.apply_and_launch().message
+        except (CameraPreflightError, RuntimeError) as error:
+            message = str(error)
+        self.refresh()
+        self.status.set(message)
+
+    def inspect_camera(self) -> None:
+        try:
+            self.controller.inspect_camera()
+            message = "Camera settings inspected"
+        except (CameraPreflightError, RuntimeError) as error:
+            message = str(error)
+        self.refresh()
+        self.status.set(message)
+
+    def _select_camera_profile(self, _event=None) -> None:
+        profile = next(
+            candidate
+            for candidate in CameraProfile
+            if candidate.display_name == self.camera_profile_value.get()
+        )
+        try:
+            self.controller.set_camera_profile(profile)
+            message = f"Camera profile selected: {profile.display_name}"
+        except RuntimeError as error:
+            message = str(error)
+        self.refresh()
+        self.status.set(message)
 
     def refresh(self) -> None:
         dashboard = self.controller.refresh()
         self.status.set(dashboard.runtime_message)
         self.auto_status.set(dashboard.auto_pause_message)
+        self._refresh_camera_settings(dashboard)
         self.sessions = list(dashboard.sessions)
         self.tree.delete(*self.tree.get_children())
         for index, session in enumerate(self.sessions):
             self.tree.insert("", tk.END, iid=str(index), text=session.path.name,
                              values=(f"{session.size_bytes / 1024 / 1024:.1f} MB", session.modified_at.isoformat()))
         self.refresh_crop_outputs()
+
+    def _refresh_camera_settings(self, dashboard: DashboardState) -> None:
+        self.camera_profile_value.set(dashboard.camera_profile.display_name)
+        self.camera_profile_combo.configure(
+            state="disabled" if dashboard.camera_controls_locked else "readonly"
+        )
+        state = camera_control_state(dashboard.camera_controls_locked)
+        self.inspect_camera_button.configure(state=state)
+        self.apply_camera_button.configure(state=state)
+        self.camera_settings_tree.delete(*self.camera_settings_tree.get_children())
+        for index, (setting, value) in enumerate(
+            camera_settings_rows(dashboard.camera_profile, dashboard.camera_snapshot)
+        ):
+            self.camera_settings_tree.insert("", tk.END, iid=str(index), text=setting, values=(value,))
 
     def refresh_crop_outputs(self, select_path: Path | None = None) -> None:
         self.cropped_outputs = self.crop_catalog.refresh()

@@ -2,6 +2,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 import math
 from pathlib import Path
+import tkinter as tk
 
 import pytest
 
@@ -19,6 +20,9 @@ from scanner_app.camera.models import CameraProfile, CameraSettingsSnapshot, Cap
 from scanner_app.visualization.crop_catalog import CroppedObjOutput
 from scanner_app.visualization.scanner_3d_window import (
     Scanner3DController,
+    Scanner3DWindow,
+    camera_control_state,
+    camera_settings_rows,
     crop_preview_limits,
     crop_preview_layout,
     crop_view_preset,
@@ -122,6 +126,45 @@ def test_controller_blocks_profile_changes_and_preflight_while_rtabmap_runs() ->
         controller.set_camera_profile(CameraProfile.FAR)
     with pytest.raises(RuntimeError, match="locked"):
         controller.inspect_camera()
+
+
+def test_camera_settings_rows_show_defaults_before_inspection_and_snapshot_afterward() -> None:
+    assert ("Preflight", "Not applied") in camera_settings_rows(CameraProfile.NEAR, None)
+    assert ("Depth work mode", "Unavailable until inspection") in camera_settings_rows(
+        CameraProfile.NEAR, None
+    )
+
+    rows = camera_settings_rows(CameraProfile.NEAR, make_snapshot())
+
+    assert ("Depth work mode", "Close_Up Precision Mode") in rows
+    assert ("Supported depth modes", "Close_Up Precision Mode; Long-distance Mode") in rows
+    assert ("Enabled depth filters", "TemporalFilter") in rows
+
+
+def test_camera_control_state_disables_profile_changes_when_locked() -> None:
+    assert camera_control_state(False) == tk.NORMAL
+    assert camera_control_state(True) == tk.DISABLED
+
+
+def test_launch_keeps_preflight_error_visible_after_refresh() -> None:
+    class FailingController:
+        def apply_and_launch(self):
+            raise RuntimeError("No Orbbec camera found")
+
+    class Status:
+        value = ""
+
+        def set(self, value: str) -> None:
+            self.value = value
+
+    window = object.__new__(Scanner3DWindow)
+    window.controller = FailingController()
+    window.status = Status()
+    window.refresh = lambda: window.status.set("RTAB-Map is not running")
+
+    window.launch()
+
+    assert window.status.value == "No Orbbec camera found"
 
 
 def test_dashboard_marks_auto_pause_unavailable_when_activity_is_uncertain() -> None:
