@@ -89,7 +89,9 @@ class CameraProfile(str, Enum):
 
     def mode_name_matches(self, name: str) -> bool:
         normalized = name.casefold()
-        return "close" in normalized if self is self.NEAR else "long" in normalized
+        if self is self.NEAR:
+            return "close" in normalized
+        return "long" in normalized or "extended" in normalized
 
 
 @dataclass(frozen=True)
