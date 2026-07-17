@@ -16,7 +16,7 @@ from scanner_app.rtabmap.exporter import ExportRequest, ExportService
 from scanner_app.rtabmap.models import RuntimeStatus, SavedSession
 from scanner_app.rtabmap.obj_crop import (
     CropRectangle, CropResult, crop_obj_bundle, perspective_projection_for_bounds,
-    preview_stride, sample_projected_vertices,
+    preview_stride, sample_visible_projected_vertices,
 )
 from scanner_app.rtabmap.runtime import RtabmapRuntime
 from scanner_app.rtabmap.windows_bridge import BridgeResult, WindowsRtabmapBridge
@@ -310,7 +310,7 @@ class scanner_3dWindow:
         def render_crop_plane() -> None:
             canvas.delete("mesh")
             projection = state["projection"]
-            for x, y in sample_projected_vertices(vertices, projection, maximum_items=10_000):
+            for x, y in sample_visible_projected_vertices(vertices, projection, maximum_items=10_000):
                 canvas.create_line(x, y, x + 1, y, fill="#9ddcf5", tags="mesh")
 
         moving_limit, settled_limit = crop_preview_limits()
