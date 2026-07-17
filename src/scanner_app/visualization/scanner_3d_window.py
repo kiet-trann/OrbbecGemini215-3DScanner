@@ -75,7 +75,7 @@ def selected_crop_path(outputs: list[CroppedObjOutput], selection: tuple[str, ..
     return outputs[index].path if 0 <= index < len(outputs) else None
 
 
-class scanner_3dController:
+class Scanner3DController:
     def __init__(self, *, runtime, bridge, monitor, catalog) -> None:
         self._runtime = runtime
         self._bridge = bridge
@@ -109,8 +109,8 @@ class scanner_3dController:
         return result
 
 
-class scanner_3dWindow:
-    def __init__(self, root: tk.Tk, *, controller: scanner_3dController, monitor: ActivityMonitor,
+class Scanner3DWindow:
+    def __init__(self, root: tk.Tk, *, controller: Scanner3DController, monitor: ActivityMonitor,
                  probe: SqliteNodeCountProbe, catalog: SessionCatalog, exporter: ExportService, output_root: Path) -> None:
         self.root, self.controller, self.monitor, self.probe = root, controller, monitor, probe
         self.catalog, self.exporter, self.output_root = catalog, exporter, output_root
@@ -121,7 +121,7 @@ class scanner_3dWindow:
         self.crop_catalog = CroppedObjCatalog(output_root)
         self.cropped_outputs: list[CroppedObjOutput] = []
         self.open_actions = OpenActionService()
-        root.title("3D Scanner 3D Scanner")
+        root.title("3D Scanner")
         root.geometry("760x720")
         self._build()
         self.refresh()
@@ -130,7 +130,7 @@ class scanner_3dWindow:
     def _build(self) -> None:
         frame = ttk.Frame(self.root, padding=14)
         frame.pack(fill=tk.BOTH, expand=True)
-        ttk.Label(frame, text="3D Scanner 3D Scanner", font=("Segoe UI", 18, "bold")).pack(anchor=tk.W)
+        ttk.Label(frame, text="3D Scanner", font=("Segoe UI", 18, "bold")).pack(anchor=tk.W)
         ttk.Label(frame, textvariable=self.status).pack(anchor=tk.W, pady=(2, 10))
         controls = ttk.Frame(frame)
         controls.pack(fill=tk.X)
@@ -249,7 +249,7 @@ class scanner_3dWindow:
     def export_selected(self) -> None:
         selected = self.tree.selection()
         if not selected:
-            messagebox.showinfo("3D Scanner 3D Scanner", "Select a saved RTAB-Map database first.")
+            messagebox.showinfo("3D Scanner", "Select a saved RTAB-Map database first.")
             return
         session = self.sessions[int(selected[0])]
         self.status.set("Exporting textured OBJ in the background...")
@@ -273,7 +273,7 @@ class scanner_3dWindow:
     def _show_crop_preview(self, source_obj: Path) -> None:
         vertices, faces = _read_obj_mesh(source_obj)
         if not vertices:
-            messagebox.showerror("3D Scanner 3D Scanner", "The OBJ contains no vertices.")
+            messagebox.showerror("3D Scanner", "The OBJ contains no vertices.")
             return
         width, height = 520, 430
         dialog = tk.Toplevel(self.root)
@@ -395,7 +395,7 @@ class scanner_3dWindow:
 
         def create_crop() -> None:
             if state["item"] is None:
-                messagebox.showinfo("3D Scanner 3D Scanner", "Drag a rectangle around the object first.", parent=dialog)
+                messagebox.showinfo("3D Scanner", "Drag a rectangle around the object first.", parent=dialog)
                 return
             x1, y1, x2, y2 = canvas.coords(state["item"])
             rectangle = CropRectangle(min(x1, x2), min(y1, y2), max(x1, x2), max(y1, y2))
@@ -464,9 +464,9 @@ def main() -> int:
     bridge = WindowsRtabmapBridge()
     monitor = ActivityMonitor(pause=bridge.pause)
     catalog = SessionCatalog(session_dir, project_root / "outputs" / "scanner_3d" / "catalog.json")
-    controller = scanner_3dController(runtime=runtime, bridge=bridge, monitor=monitor, catalog=catalog)
+    controller = Scanner3DController(runtime=runtime, bridge=bridge, monitor=monitor, catalog=catalog)
     root = tk.Tk()
-    scanner_3dWindow(root, controller=controller, monitor=monitor,
+    Scanner3DWindow(root, controller=controller, monitor=monitor,
                          probe=SqliteNodeCountProbe(session_dir / "rtabmap.tmp.db"), catalog=catalog,
                          exporter=ExportService(exporter=runtime._paths.exporter),
                          output_root=project_root / "outputs" / "scanner_3d")

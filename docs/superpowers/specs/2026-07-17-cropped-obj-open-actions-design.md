@@ -3,7 +3,7 @@
 ## Goal
 
 Let an operator open the latest successfully created cropped OBJ or its output
-folder directly from 3D Scanner 3D Scanner, without copying paths from the status log.
+folder directly from 3D Scanner, without copying paths from the status log.
 
 ## User interface
 
@@ -20,7 +20,7 @@ opens a stale or guessed path.
 
 ## Data flow and failure handling
 
-`scanner_3dWindow` stores the result OBJ path only on the Tk event loop,
+`Scanner3DWindow` stores the result OBJ path only on the Tk event loop,
 after its background crop worker succeeds. The open actions verify the stored
 file/directory still exists before invoking the Windows shell. A missing file or
 an operating-system launch failure is reported in the existing status area.

@@ -118,7 +118,7 @@ Expected: all tests pass and `git diff --check` has no output.
 
 - [ ] **Step 5: Manual Windows acceptance**
 
-Run: `..\\..\\.venv\\Scripts\\python.exe scripts\\17_scanner_3d.py`
+Run: `..\\..\\.venv\\Scripts\\python.exe scripts\\17_3d_scanner.py`
 
 Expected: right-dragging left 3D canvas remains responsive; releasing updates a flat dotted 2D crop plane at right; crop rectangle creates the expected cropped OBJ.
 

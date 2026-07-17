@@ -1,12 +1,12 @@
-# 3D Scanner 3D Scanner Design
+# 3D Scanner Design
 
 Date: 2026-07-17
 
 ## Purpose and scope
 
-3D Scanner 3D Scanner is a Windows desktop control application around the verified
+3D Scanner is a Windows desktop control application around the verified
 RTAB-Map + Orbbec Gemini 215 workflow. RTAB-Map remains the only process that
-opens the camera, performs SLAM, and maintains the live 3D view. 3D Scanner 3D
+opens the camera, performs SLAM, and maintains the live 3D view. 3D
 Scanner makes that workflow easier to operate: it launches RTAB-Map, presents
 the current session state, provides a fail-safe experimental auto-pause mode,
 tracks saved sessions, and produces cropped OBJ exports.
@@ -18,10 +18,10 @@ distribution and the existing Gemini 215 configuration.
 
 ## Operator experience
 
-1. The operator opens 3D Scanner 3D Scanner and presses **Open RTAB-Map**. The app
+1. The operator opens 3D Scanner and presses **Open RTAB-Map**. The app
    verifies that the configured executable exists, starts it if necessary, and
    shows whether it can identify the RTAB-Map window.
-2. The operator scans in RTAB-Map as normal. 3D Scanner 3D Scanner displays a
+2. The operator scans in RTAB-Map as normal. 3D Scanner displays a
    companion state only; it does not attempt to claim ownership of the camera.
 3. The operator may enable **Auto-pause (experimental)**. After the configured
    inactivity interval (initially three seconds), the app gives a short visible
@@ -29,7 +29,7 @@ distribution and the existing Gemini 215 configuration.
 4. The operator reviews the live 3D model in RTAB-Map, then chooses to resume
    scanning or manually save the database. The save dialog remains RTAB-Map's
    dialog, preserving its native save semantics.
-5. Once a saved `.db` is selected, 3D Scanner 3D Scanner lists it as a session. The
+5. Once a saved `.db` is selected, 3D Scanner lists it as a session. The
    operator can export a raw OBJ or open its crop workflow. Crop produces a
    second, clearly named OBJ output; the source database and raw export stay
    untouched.
@@ -61,7 +61,7 @@ components:
   3D view-frustum region. It keeps the remaining mesh triangles, UVs, material
   references, and texture files so that a successful cropped export remains a
   textured OBJ. The source OBJ is never overwritten.
-* `scanner_3dWindow` presents the control panel, status, session list,
+* `Scanner3DWindow` presents the control panel, status, session list,
   export/crop actions, and a readable activity log. It depends on the services
   through narrow interfaces, so each service can be tested without a window or
   real RTAB-Map process.
@@ -90,7 +90,7 @@ disabled and clearly labelled unavailable; the rest of the app is not blocked.
 
 ## Sessions, export, and crop
 
-Saving remains a manual RTAB-Map action: File -> Close database -> Save. 3D Scanner
+Saving remains a manual RTAB-Map action: File -> Close database -> Save. 3D
 3D Scanner detects the saved file and adds it to the catalog; it does not move,
 rename, or rewrite it. Each export is placed in a folder derived from the
 session stem and timestamp, with the command log and export metadata beside it.
@@ -130,7 +130,7 @@ leave inputs intact.
 
 Hardware acceptance has four separate checks:
 
-1. 3D Scanner 3D Scanner launches the configured RTAB-Map and never opens a second
+1. 3D Scanner launches the configured RTAB-Map and never opens a second
    Gemini camera stream.
 2. The activity feasibility spike correctly observes both active mapping and a
    three-second inactive interval in repeated real scans. Only then is

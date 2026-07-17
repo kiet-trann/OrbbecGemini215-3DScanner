@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Show previously created cropped OBJ bundles in 3D Scanner 3D Scanner and open the selected one after restarting the app.
+**Goal:** Show previously created cropped OBJ bundles in 3D Scanner and open the selected one after restarting the app.
 
 **Architecture:** A read-only `CroppedObjCatalog` discovers `*_cropped.obj` files under the configured output root and returns immutable records sorted by modified time. The Tk window owns selection state, refreshes that catalog with its normal refresh and after crop success, and passes the selected path to the existing `OpenActionService`.
 
@@ -102,7 +102,7 @@ Expected: PASS with two tests.
 
 **Interfaces:**
 - Consumes `CroppedObjCatalog.refresh() -> list[CroppedObjOutput]` and `OpenActionService`.
-- `scanner_3dWindow.refresh_crop_outputs(select_path: Path | None = None) -> None` populates the crop-output tree.
+- `Scanner3DWindow.refresh_crop_outputs(select_path: Path | None = None) -> None` populates the crop-output tree.
 - `open_latest_cropped_obj()` and `open_latest_output_folder()` use the selected crop tree row, not process-local crop state.
 
 - [ ] **Step 1: Write the failing selection helper test**
@@ -141,7 +141,7 @@ Expected: focused tests and the complete suite pass; `git diff --check` has no o
 
 - [ ] **Step 5: Manual Windows acceptance**
 
-Run: `..\\..\\.venv\\Scripts\\python.exe scripts\\17_scanner_3d.py`
+Run: `..\\..\\.venv\\Scripts\\python.exe scripts\\17_3d_scanner.py`
 
 Expected: a prior `*_cropped.obj` appears after app restart; selecting it enables both open buttons; the folder button opens its exact crop bundle; crop success refreshes and selects the new row.
 

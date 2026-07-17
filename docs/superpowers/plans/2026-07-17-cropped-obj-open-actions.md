@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Allow the operator to open the latest cropped OBJ or its output folder directly from 3D Scanner 3D Scanner.
+**Goal:** Allow the operator to open the latest cropped OBJ or its output folder directly from 3D Scanner.
 
 **Architecture:** Add an injected `OpenActionService` that validates files before delegating to the Windows shell. The Tk window retains only the latest successful crop path and enables two buttons only after that path is available.
 
@@ -28,7 +28,7 @@
 **Interfaces:**
 - Produces `OpenActionResult(opened: bool, message: str)` and `OpenActionService(launcher: Callable[[str], None])`.
 - Produces `OpenActionService.open_obj(path: Path) -> OpenActionResult` and `open_folder(path: Path) -> OpenActionResult`.
-- `scanner_3dWindow` stores `latest_cropped_obj: Path | None`, enables two Tk buttons after crop success, and invokes the service from its Tk event loop.
+- `Scanner3DWindow` stores `latest_cropped_obj: Path | None`, enables two Tk buttons after crop success, and invokes the service from its Tk event loop.
 
 - [ ] **Step 1: Write the failing service tests**
 
@@ -106,7 +106,7 @@ Expected: all new and existing tests pass, and `git diff --check` has no output.
 
 - [ ] **Step 6: Manual Windows acceptance**
 
-Run: `..\\..\\.venv\\Scripts\\python.exe scripts\\17_scanner_3d.py`
+Run: `..\\..\\.venv\\Scripts\\python.exe scripts\\17_3d_scanner.py`
 
 Expected: both buttons are disabled at launch; crop an OBJ; both enable; `Open output folder` opens the crop bundle directory; `Open cropped OBJ` launches the Windows file association or Windows app-choice prompt.
 

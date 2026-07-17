@@ -1,4 +1,4 @@
-# 3D Scanner 3D Scanner Activity Probe
+# 3D Scanner Activity Probe
 
 Date: 2026-07-17
 
@@ -30,5 +30,5 @@ area. The read-only probe returned:
 
 The signal therefore observed both required conditions: Node growth while
 mapping and no new Node for more than three seconds. The monitor may be exposed
-as opt-in experimental functionality in the 3D Scanner 3D Scanner UI. It must still
+as opt-in experimental functionality in the 3D Scanner UI. It must still
 send only the guarded Pause command, never Save, Stop, or Close Database.

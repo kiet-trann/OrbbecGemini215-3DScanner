@@ -15,7 +15,7 @@ from scanner_app.rtabmap.models import RuntimeStatus, SavedSession
 from scanner_app.rtabmap.windows_bridge import BridgeResult
 from scanner_app.visualization.crop_catalog import CroppedObjOutput
 from scanner_app.visualization.scanner_3d_window import (
-    scanner_3dController,
+    Scanner3DController,
     crop_preview_limits,
     crop_preview_layout,
     crop_view_preset,
@@ -56,7 +56,7 @@ class FakeCatalog:
 
 
 def test_dashboard_marks_auto_pause_unavailable_when_activity_is_uncertain() -> None:
-    controller = scanner_3dController(
+    controller = Scanner3DController(
         runtime=FakeRuntime(),
         bridge=FakeBridge(),
         monitor=FakeMonitor(AutoPauseState.UNCERTAIN),
@@ -72,7 +72,7 @@ def test_dashboard_marks_auto_pause_unavailable_when_activity_is_uncertain() -> 
 
 def test_manual_pause_and_resume_are_available_independently_of_auto_pause() -> None:
     bridge = FakeBridge()
-    controller = scanner_3dController(
+    controller = Scanner3DController(
         runtime=FakeRuntime(),
         bridge=bridge,
         monitor=FakeMonitor(AutoPauseState.UNCERTAIN),

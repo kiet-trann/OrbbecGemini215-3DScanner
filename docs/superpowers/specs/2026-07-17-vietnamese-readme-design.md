@@ -2,7 +2,7 @@
 
 ## Mục tiêu
 
-Thay README prototype cũ bằng hướng dẫn vận hành tiếng Việt cho 3D Scanner 3D Scanner
+Thay README prototype cũ bằng hướng dẫn vận hành tiếng Việt cho 3D Scanner
 và luồng RTAB-Map + Orbbec Gemini 215 đang được dùng.
 
 ## Đối tượng và phạm vi
@@ -13,7 +13,7 @@ script prototype marker/markerless cũ không được trình bày như luồng 
 
 ## Cấu trúc
 
-1. Giới thiệu vai trò của 3D Scanner 3D Scanner và RTAB-Map.
+1. Giới thiệu vai trò của 3D Scanner và RTAB-Map.
 2. Yêu cầu: Windows, Python environment của dự án, Orbbec Gemini 215 và
    RTAB-Map runtime đã được đóng gói trong repository qua Git LFS.
 3. Khởi chạy bằng shortcut Desktop hoặc lệnh Python.
