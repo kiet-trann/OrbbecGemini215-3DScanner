@@ -17,6 +17,7 @@ from scanner_app.visualization.scanner_3d_window import (
     scanner_3dController,
     crop_preview_limits,
     crop_preview_layout,
+    crop_view_preset,
     selected_crop_path,
 )
 
@@ -110,3 +111,9 @@ def test_crop_preview_uses_less_detail_while_rotating() -> None:
 
     assert moving < settled
     assert moving == 700
+
+
+def test_crop_view_presets_define_full_orbit_angles() -> None:
+    assert crop_view_preset("front") == (0.0, 0.0)
+    assert crop_view_preset("back") == (3.141592653589793, 0.0)
+    assert crop_view_preset("top") == (0.0, -1.5707963267948966)
