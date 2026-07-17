@@ -3,6 +3,8 @@ from datetime import datetime, timezone
 import math
 from pathlib import Path
 
+import pytest
+
 try:
     from test_support import add_src_to_path
 except ImportError:
@@ -13,6 +15,7 @@ add_src_to_path()
 from scanner_app.rtabmap.activity import AutoPauseState
 from scanner_app.rtabmap.models import RuntimeStatus, SavedSession
 from scanner_app.rtabmap.windows_bridge import BridgeResult
+from scanner_app.camera.models import CameraProfile, CameraSettingsSnapshot, CaptureConfig
 from scanner_app.visualization.crop_catalog import CroppedObjOutput
 from scanner_app.visualization.scanner_3d_window import (
     Scanner3DController,
@@ -26,8 +29,14 @@ from scanner_app.visualization.scanner_3d_window import (
 @dataclass
 class FakeRuntime:
     status_value: RuntimeStatus = RuntimeStatus(True, "RTAB-Map is running")
+    launch_calls: int = 0
 
     def status(self) -> RuntimeStatus:
+        return self.status_value
+
+    def launch(self) -> RuntimeStatus:
+        self.launch_calls += 1
+        self.status_value = RuntimeStatus(True, "RTAB-Map started")
         return self.status_value
 
 
@@ -53,6 +62,66 @@ class FakeBridge:
 class FakeCatalog:
     def refresh(self) -> list[SavedSession]:
         return [SavedSession(Path("C:/sessions/scan.db"), 1024, modified_at=None)]  # type: ignore[arg-type]
+
+
+def make_snapshot(profile: CameraProfile = CameraProfile.NEAR) -> CameraSettingsSnapshot:
+    return CameraSettingsSnapshot(
+        profile=profile,
+        preflight_state="applied-and-verified",
+        confirmed_mode="Close_Up Precision Mode",
+        supported_modes=("Close_Up Precision Mode", "Long-distance Mode"),
+        device_name="Gemini 215",
+        serial_number="G215-123",
+        firmware_version="1.0.0",
+        capture_config=CaptureConfig(),
+        alignment_target="depth",
+        enabled_depth_filters=("TemporalFilter",),
+    )
+
+
+class FakePreflight:
+    def __init__(self) -> None:
+        self.applied_profiles: list[CameraProfile] = []
+        self.inspected_profiles: list[CameraProfile] = []
+
+    def apply(self, profile: CameraProfile) -> CameraSettingsSnapshot:
+        self.applied_profiles.append(profile)
+        return make_snapshot(profile)
+
+    def inspect(self, profile: CameraProfile) -> CameraSettingsSnapshot:
+        self.inspected_profiles.append(profile)
+        return make_snapshot(profile)
+
+
+def make_controller(*, runtime: FakeRuntime, preflight: FakePreflight | None = None) -> Scanner3DController:
+    return Scanner3DController(
+        runtime=runtime,
+        bridge=FakeBridge(),
+        monitor=FakeMonitor(AutoPauseState.ACTIVE),
+        catalog=FakeCatalog(),
+        preflight=preflight or FakePreflight(),
+    )
+
+
+def test_apply_and_launch_runs_verified_preflight_before_runtime_launch() -> None:
+    runtime = FakeRuntime(RuntimeStatus(False, "RTAB-Map is not running"))
+    preflight = FakePreflight()
+    controller = make_controller(runtime=runtime, preflight=preflight)
+
+    result = controller.apply_and_launch()
+
+    assert preflight.applied_profiles == [CameraProfile.NEAR]
+    assert runtime.launch_calls == 1
+    assert result.running
+
+
+def test_controller_blocks_profile_changes_and_preflight_while_rtabmap_runs() -> None:
+    controller = make_controller(runtime=FakeRuntime(RuntimeStatus(True, "RTAB-Map is running")))
+
+    with pytest.raises(RuntimeError, match="locked"):
+        controller.set_camera_profile(CameraProfile.FAR)
+    with pytest.raises(RuntimeError, match="locked"):
+        controller.inspect_camera()
 
 
 def test_dashboard_marks_auto_pause_unavailable_when_activity_is_uncertain() -> None:
