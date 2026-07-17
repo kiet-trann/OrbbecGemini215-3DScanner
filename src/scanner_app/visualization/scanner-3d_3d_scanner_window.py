@@ -3,16 +3,18 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
 import threading
 import time
 import tkinter as tk
-from tkinter import messagebox, ttk
+from tkinter import filedialog, messagebox, ttk
 
 from scanner_app.rtabmap.activity import ActivityMonitor, AutoPauseState, SqliteNodeCountProbe
 from scanner_app.rtabmap.catalog import SessionCatalog
 from scanner_app.rtabmap.exporter import ExportRequest, ExportService
 from scanner_app.rtabmap.models import RuntimeStatus, SavedSession
+from scanner_app.rtabmap.obj_crop import CropRectangle, crop_obj_bundle, projection_for_bounds
 from scanner_app.rtabmap.runtime import RtabmapRuntime
 from scanner_app.rtabmap.windows_bridge import BridgeResult, WindowsRtabmapBridge
 
@@ -101,6 +103,7 @@ class scanner_3dWindow:
         actions = ttk.Frame(frame)
         actions.pack(fill=tk.X, pady=(8, 0))
         ttk.Button(actions, text="Refresh sessions", command=self.refresh).pack(side=tk.LEFT)
+        ttk.Button(actions, text="Crop raw OBJ", command=self.choose_crop_source).pack(side=tk.RIGHT, padx=(0, 8))
         ttk.Button(actions, text="Export raw OBJ", command=self.export_selected).pack(side=tk.RIGHT)
 
     def launch(self) -> None:
@@ -153,6 +156,75 @@ class scanner_3dWindow:
         result = self.exporter.export(ExportRequest(session.path, self.output_root))
         message = result.error or f"Exported: {result.obj}"
         self.root.after(0, lambda: self.status.set(message))
+
+    def choose_crop_source(self) -> None:
+        selected = filedialog.askopenfilename(
+            parent=self.root,
+            title="Choose raw OBJ to crop",
+            initialdir=self.output_root,
+            filetypes=[("Wavefront OBJ", "*.obj")],
+        )
+        if selected:
+            self._show_crop_preview(Path(selected))
+
+    def _show_crop_preview(self, source_obj: Path) -> None:
+        vertices = _read_obj_vertices(source_obj)
+        if not vertices:
+            messagebox.showerror("3D Scanner 3D Scanner", "The OBJ contains no vertices.")
+            return
+        width, height = 700, 500
+        projection = projection_for_bounds(vertices, viewport_width=width, viewport_height=height)
+        dialog = tk.Toplevel(self.root)
+        dialog.title(f"Crop preview — {source_obj.name}")
+        ttk.Label(dialog, text="Drag one rectangle around the object, then create a separate cropped OBJ.").pack(padx=10, pady=(10, 4))
+        canvas = tk.Canvas(dialog, width=width, height=height, background="#171717", cursor="crosshair")
+        canvas.pack(padx=10, pady=6)
+        for vertex in vertices:
+            point = projection.project((*vertex, 1.0))
+            if point is not None:
+                x, y = point
+                canvas.create_line(x, y, x + 1, y, fill="#8fd3ff")
+        selection: dict[str, float | int | None] = {"x": None, "y": None, "item": None}
+
+        def start(event) -> None:
+            selection["x"], selection["y"] = event.x, event.y
+            selection["item"] = canvas.create_rectangle(event.x, event.y, event.x, event.y, outline="#ffbf3f", width=2)
+
+        def drag(event) -> None:
+            if selection["item"] is not None:
+                canvas.coords(selection["item"], selection["x"], selection["y"], event.x, event.y)
+
+        def create_crop() -> None:
+            if selection["item"] is None:
+                messagebox.showinfo("3D Scanner 3D Scanner", "Drag a rectangle around the object first.", parent=dialog)
+                return
+            x1, y1, x2, y2 = canvas.coords(selection["item"])
+            rectangle = CropRectangle(min(x1, x2), min(y1, y2), max(x1, x2), max(y1, y2))
+            output_dir = source_obj.parent.parent / f"cropped_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+            self.status.set("Creating cropped OBJ in the background...")
+            threading.Thread(target=self._crop_worker, args=(source_obj, rectangle, projection, output_dir), daemon=True).start()
+            dialog.destroy()
+
+        canvas.bind("<Button-1>", start)
+        canvas.bind("<B1-Motion>", drag)
+        ttk.Button(dialog, text="Create cropped OBJ", command=create_crop).pack(pady=(0, 10))
+
+    def _crop_worker(self, source: Path, rectangle: CropRectangle, projection, output_dir: Path) -> None:
+        try:
+            result = crop_obj_bundle(source, rectangle, projection, output_dir)
+            message = f"Cropped OBJ: {result.obj}"
+        except (OSError, ValueError) as error:
+            message = f"Crop failed: {error}"
+        self.root.after(0, lambda: self.status.set(message))
+
+
+def _read_obj_vertices(path: Path) -> list[tuple[float, float, float]]:
+    vertices: list[tuple[float, float, float]] = []
+    for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
+        if line.startswith("v "):
+            values = line.split()
+            vertices.append((float(values[1]), float(values[2]), float(values[3])))
+    return vertices
 
 
 def main() -> int:

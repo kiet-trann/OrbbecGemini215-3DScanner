@@ -40,6 +40,21 @@ class CropResult:
     obj: Path
 
 
+def projection_for_bounds(
+    vertices: list[tuple[float, float, float]], *, viewport_width: int, viewport_height: int
+) -> CameraProjection:
+    points = np.asarray(vertices, dtype=np.float64)
+    minimum = points.min(axis=0)
+    maximum = points.max(axis=0)
+    extent = np.maximum(maximum - minimum, 1e-9)
+    scale = 2.0 / extent
+    translate = -(maximum + minimum) / extent
+    matrix = np.eye(4, dtype=np.float64)
+    matrix[0, 0], matrix[1, 1], matrix[2, 2] = scale
+    matrix[:3, 3] = translate
+    return CameraProjection(matrix, viewport_width=viewport_width, viewport_height=viewport_height)
+
+
 def crop_obj_bundle(source_obj: Path, rectangle: CropRectangle, projection: CameraProjection, output_dir: Path) -> CropResult:
     lines = source_obj.read_text(encoding="utf-8", errors="replace").splitlines()
     vertices: list[tuple[float, float, float, float]] = []

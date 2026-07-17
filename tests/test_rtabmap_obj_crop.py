@@ -10,7 +10,7 @@ except ImportError:
 
 add_src_to_path()
 
-from scanner_app.rtabmap.obj_crop import CameraProjection, CropRectangle, crop_obj_bundle
+from scanner_app.rtabmap.obj_crop import CameraProjection, CropRectangle, crop_obj_bundle, projection_for_bounds
 
 
 def write_bundle(directory: Path) -> Path:
@@ -52,3 +52,14 @@ def test_crop_rejects_an_empty_selection_without_creating_output(tmp_path: Path)
         )
 
     assert not (tmp_path / "cropped").exists()
+
+
+def test_projection_for_bounds_maps_the_mesh_extent_to_the_preview() -> None:
+    projection = projection_for_bounds(
+        [(-2.0, -1.0, 0.0), (2.0, 3.0, 4.0)],
+        viewport_width=800,
+        viewport_height=600,
+    )
+
+    assert projection.project((-2.0, -1.0, 0.0, 1.0)) == (0.0, 600.0)
+    assert projection.project((2.0, 3.0, 4.0, 1.0)) == (800.0, 0.0)
