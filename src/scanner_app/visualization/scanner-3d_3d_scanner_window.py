@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime
+import math
 from pathlib import Path
 import threading
 import time
@@ -52,6 +53,16 @@ def crop_preview_layout() -> CropPreviewLayout:
 
 def crop_preview_limits() -> tuple[int, int]:
     return 700, 2_800
+
+
+def crop_view_preset(name: str) -> tuple[float, float]:
+    return {
+        "reset": (0.65, -0.25),
+        "front": (0.0, 0.0),
+        "back": (math.pi, 0.0),
+        "top": (0.0, -math.pi / 2.0),
+        "bottom": (0.0, math.pi / 2.0),
+    }[name]
 
 
 def selected_crop_path(outputs: list[CroppedObjOutput], selection: tuple[str, ...]) -> Path | None:
@@ -351,8 +362,8 @@ class scanner_3dWindow:
         def rotate(event) -> None:
             if state["rotate_x"] is None:
                 return
-            state["yaw"] = float(state["yaw"]) + (event.x - float(state["rotate_x"])) * 0.012
-            state["pitch"] = max(-1.35, min(1.35, float(state["pitch"]) + (event.y - float(state["rotate_y"])) * 0.012))
+            state["yaw"] = (float(state["yaw"]) + (event.x - float(state["rotate_x"])) * 0.012) % (2.0 * math.pi)
+            state["pitch"] = (float(state["pitch"]) + (event.y - float(state["rotate_y"])) * 0.012) % (2.0 * math.pi)
             state["rotate_x"], state["rotate_y"] = event.x, event.y
             canvas.delete("selection")
             state["item"] = None
@@ -370,6 +381,13 @@ class scanner_3dWindow:
 
         def zoom(event) -> None:
             state["distance"] = max(2.2, min(8.0, float(state["distance"]) - event.delta / 1200.0))
+            canvas.delete("selection")
+            state["item"] = None
+            render_3d(settled_limit)
+            render_crop_plane()
+
+        def apply_preset(name: str) -> None:
+            state["yaw"], state["pitch"] = crop_view_preset(name)
             canvas.delete("selection")
             state["item"] = None
             render_3d(settled_limit)
@@ -393,6 +411,10 @@ class scanner_3dWindow:
         view_canvas.bind("<B3-Motion>", rotate)
         view_canvas.bind("<ButtonRelease-3>", rotate_end)
         view_canvas.bind("<MouseWheel>", zoom)
+        view_controls = ttk.Frame(dialog)
+        view_controls.pack(pady=(0, 6))
+        for name, label in (("reset", "Reset"), ("front", "Front"), ("back", "Back"), ("top", "Top"), ("bottom", "Bottom")):
+            ttk.Button(view_controls, text=label, command=lambda value=name: apply_preset(value)).pack(side=tk.LEFT, padx=3)
         ttk.Button(dialog, text="Create cropped OBJ", command=create_crop).pack(pady=(0, 10))
 
     def _crop_worker(self, source: Path, rectangle: CropRectangle, projection, output_dir: Path) -> None:
