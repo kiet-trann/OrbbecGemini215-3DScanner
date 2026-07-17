@@ -18,6 +18,7 @@ from scanner_app.rtabmap.obj_crop import (
     preview_stride,
     projection_for_bounds,
     sample_projected_vertices,
+    sample_visible_projected_vertices,
 )
 
 
@@ -102,3 +103,11 @@ def test_sample_projected_vertices_uses_the_crop_projection() -> None:
     points = sample_projected_vertices([(-1, -1, 0), (1, 1, 0)], projection, maximum_items=10)
 
     assert points == [(0.0, 600.0), (800.0, 0.0)]
+
+
+def test_visible_projection_keeps_only_the_nearest_overlapping_point() -> None:
+    projection = CameraProjection(np.eye(4), viewport_width=800, viewport_height=600)
+
+    points = sample_visible_projected_vertices([(0, 0, 0.8), (0, 0, -0.8)], projection, maximum_items=10)
+
+    assert points == [(400.0, 300.0)]

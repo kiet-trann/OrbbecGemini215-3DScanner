@@ -52,6 +52,25 @@ def sample_projected_vertices(
     return [point for vertex in vertices[::stride] if (point := projection.project((*vertex, 1.0))) is not None]
 
 
+def sample_visible_projected_vertices(
+    vertices: list[tuple[float, float, float]], projection: CameraProjection, maximum_items: int, cell_size: int = 3,
+) -> list[tuple[float, float]]:
+    nearest: dict[tuple[int, int], tuple[float, tuple[float, float]]] = {}
+    stride = preview_stride(len(vertices), maximum_items)
+    for vertex in vertices[::stride]:
+        clip = projection.world_to_clip @ np.asarray((*vertex, 1.0), dtype=np.float64)
+        if clip[3] <= 0:
+            continue
+        ndc = clip[:3] / clip[3]
+        if not np.all((-1.0 <= ndc) & (ndc <= 1.0)):
+            continue
+        point = ((ndc[0] + 1.0) * projection.viewport_width / 2.0, (1.0 - ndc[1]) * projection.viewport_height / 2.0)
+        key = (int(point[0] // cell_size), int(point[1] // cell_size))
+        if key not in nearest or ndc[2] < nearest[key][0]:
+            nearest[key] = (float(ndc[2]), point)
+    return [entry[1] for entry in nearest.values()]
+
+
 def projection_for_bounds(
     vertices: list[tuple[float, float, float]], *, viewport_width: int, viewport_height: int
 ) -> CameraProjection:
