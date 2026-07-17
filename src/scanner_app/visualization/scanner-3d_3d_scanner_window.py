@@ -28,6 +28,23 @@ class DashboardState:
     busy: bool
 
 
+@dataclass(frozen=True)
+class CropPreviewLayout:
+    view_title: str
+    crop_title: str
+    view_instructions: str
+    crop_instructions: str
+
+
+def crop_preview_layout() -> CropPreviewLayout:
+    return CropPreviewLayout(
+        view_title="3D model view",
+        crop_title="Crop here",
+        view_instructions="Right-drag to rotate - wheel to zoom",
+        crop_instructions="Left-drag one rectangle around the part to keep",
+    )
+
+
 class scanner_3dController:
     def __init__(self, *, runtime, bridge, monitor, catalog) -> None:
         self._runtime = runtime
@@ -172,12 +189,27 @@ class scanner_3dWindow:
         if not vertices:
             messagebox.showerror("3D Scanner 3D Scanner", "The OBJ contains no vertices.")
             return
-        width, height = 700, 500
+        width, height = 520, 430
         dialog = tk.Toplevel(self.root)
+        layout = crop_preview_layout()
         dialog.title(f"Crop preview — {source_obj.name}")
         ttk.Label(dialog, text="Right-drag to rotate · wheel to zoom · left-drag one crop rectangle.").pack(padx=10, pady=(10, 4))
-        canvas = tk.Canvas(dialog, width=width, height=height, background="#171717", cursor="crosshair")
-        canvas.pack(padx=10, pady=6)
+        ttk.Label(
+            dialog,
+            text="Use the left model to choose the angle. Drag the rectangle only in the right panel.",
+        ).pack(padx=10, pady=(0, 4))
+        panels = ttk.Frame(dialog)
+        panels.pack(padx=10, pady=6)
+        view_panel = ttk.LabelFrame(panels, text=layout.view_title)
+        view_panel.pack(side=tk.LEFT, padx=(0, 6))
+        crop_panel = ttk.LabelFrame(panels, text=layout.crop_title)
+        crop_panel.pack(side=tk.LEFT)
+        ttk.Label(view_panel, text=layout.view_instructions).pack(padx=6, pady=(5, 2))
+        ttk.Label(crop_panel, text=layout.crop_instructions).pack(padx=6, pady=(5, 2))
+        view_canvas = tk.Canvas(view_panel, width=width, height=height, background="#171717", cursor="fleur")
+        view_canvas.pack(padx=6, pady=(0, 6))
+        canvas = tk.Canvas(crop_panel, width=width, height=height, background="#171717", cursor="crosshair")
+        canvas.pack(padx=6, pady=(0, 6))
         state: dict[str, float | int | None | object] = {"yaw": 0.65, "pitch": -0.25, "distance": 3.5,
                                                            "x": None, "y": None, "item": None,
                                                            "rotate_x": None, "rotate_y": None, "projection": None}
@@ -189,23 +221,45 @@ class scanner_3dWindow:
             )
             state["projection"] = projection
             canvas.delete("mesh")
+            view_canvas.delete("mesh")
+            view_canvas.delete("kept")
             stride = max(1, len(faces) // 2800)
             for number, face in enumerate(faces[::stride]):
                 points = [projection.project((*vertices[index - 1], 1.0)) for index in face]
                 if all(point is not None for point in points):
                     flat = [coordinate for point in points for coordinate in point]
                     shade = 55 + (number % 4) * 12
-                    canvas.create_polygon(*flat, fill=f"#{15:02x}{shade:02x}{min(155, shade + 55):02x}", outline="#255a73", tags="mesh")
+                    color = f"#{15:02x}{shade:02x}{min(155, shade + 55):02x}"
+                    canvas.create_polygon(*flat, fill=color, outline="#255a73", tags="mesh")
+                    view_canvas.create_polygon(*flat, fill=color, outline="#255a73", tags="mesh")
 
         render()
 
+        def show_kept_preview() -> None:
+            view_canvas.delete("kept")
+            if state["item"] is None:
+                return
+            x1, y1, x2, y2 = canvas.coords(state["item"])
+            rectangle = CropRectangle(min(x1, x2), min(y1, y2), max(x1, x2), max(y1, y2))
+            projection = state["projection"]
+            stride = max(1, len(faces) // 2800)
+            for face in faces[::stride]:
+                points = [projection.project((*vertices[index - 1], 1.0)) for index in face]
+                if all(point is not None and rectangle.contains(*point) for point in points):
+                    flat = [coordinate for point in points for coordinate in point]
+                    view_canvas.create_polygon(*flat, fill="#ffc857", outline="#fff0bd", tags="kept")
+
         def start(event) -> None:
+            canvas.delete("selection")
             state["x"], state["y"] = event.x, event.y
-            state["item"] = canvas.create_rectangle(event.x, event.y, event.x, event.y, outline="#ffbf3f", width=2)
+            state["item"] = canvas.create_rectangle(
+                event.x, event.y, event.x, event.y, outline="#ffbf3f", width=2, tags="selection"
+            )
 
         def drag(event) -> None:
             if state["item"] is not None:
                 canvas.coords(state["item"], state["x"], state["y"], event.x, event.y)
+                show_kept_preview()
 
         def rotate_start(event) -> None:
             state["rotate_x"], state["rotate_y"] = event.x, event.y
@@ -216,11 +270,13 @@ class scanner_3dWindow:
             state["yaw"] = float(state["yaw"]) + (event.x - float(state["rotate_x"])) * 0.012
             state["pitch"] = max(-1.35, min(1.35, float(state["pitch"]) + (event.y - float(state["rotate_y"])) * 0.012))
             state["rotate_x"], state["rotate_y"] = event.x, event.y
+            canvas.delete("selection")
             state["item"] = None
             render()
 
         def zoom(event) -> None:
             state["distance"] = max(2.2, min(8.0, float(state["distance"]) - event.delta / 1200.0))
+            canvas.delete("selection")
             state["item"] = None
             render()
 
@@ -237,9 +293,9 @@ class scanner_3dWindow:
 
         canvas.bind("<Button-1>", start)
         canvas.bind("<B1-Motion>", drag)
-        canvas.bind("<Button-3>", rotate_start)
-        canvas.bind("<B3-Motion>", rotate)
-        canvas.bind("<MouseWheel>", zoom)
+        view_canvas.bind("<Button-3>", rotate_start)
+        view_canvas.bind("<B3-Motion>", rotate)
+        view_canvas.bind("<MouseWheel>", zoom)
         ttk.Button(dialog, text="Create cropped OBJ", command=create_crop).pack(pady=(0, 10))
 
     def _crop_worker(self, source: Path, rectangle: CropRectangle, projection, output_dir: Path) -> None:
