@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from enum import Enum
 from typing import Literal
 
 import numpy as np
@@ -72,3 +73,36 @@ class CaptureConfig:
     normal_scan_max_m: float = 0.40
     object_min_cm: float = 5.0
     object_max_cm: float = 30.0
+
+
+class CameraProfile(str, Enum):
+    NEAR = "near"
+    FAR = "far"
+
+    @property
+    def display_name(self) -> str:
+        return "Near — Close-up Precision" if self is self.NEAR else "Far — Long-distance"
+
+    @property
+    def distance_range_m(self) -> tuple[float, float]:
+        return (0.15, 0.32) if self is self.NEAR else (0.20, 0.70)
+
+    def mode_name_matches(self, name: str) -> bool:
+        normalized = name.casefold()
+        if self is self.NEAR:
+            return "close" in normalized
+        return "long" in normalized or "extended" in normalized
+
+
+@dataclass(frozen=True)
+class CameraSettingsSnapshot:
+    profile: CameraProfile
+    preflight_state: str
+    confirmed_mode: str | None
+    supported_modes: tuple[str, ...]
+    device_name: str | None
+    serial_number: str | None
+    firmware_version: str | None
+    capture_config: CaptureConfig
+    alignment_target: str
+    enabled_depth_filters: tuple[str, ...]

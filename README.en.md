@@ -16,7 +16,7 @@ exports OBJ files, and crops individual objects.
 ```text
 Open 3D Scanner
         ↓
-Open RTAB-Map → scan the object → save the database (.db)
+Choose camera profile → Apply & Open RTAB-Map → scan the object → save the database (.db)
         ↓
 Refresh sessions → select a database → Export raw OBJ
         ↓
@@ -80,14 +80,24 @@ $ProjectRoot = (Get-Location).Path
 ## Scan and save a session
 
 1. Open 3D Scanner.
-2. Select **Open RTAB-Map**.
-3. In RTAB-Map, select the Orbbec Gemini 215 source and slowly scan around
+2. In **Camera setup**, choose **Near — Close-up Precision** (0.15--0.32 m)
+   or **Far — Long-distance** (0.20--0.70 m).
+3. Optionally select **Refresh camera settings** to see the device's reported
+   mode, serial number, firmware, stream profiles, depth range, alignment, IMU,
+   and depth filters.
+4. Select **Apply & Open RTAB-Map**. The app configures and verifies the mode
+   before RTAB-Map opens the camera.
+5. In RTAB-Map, select the Orbbec Gemini 215 source and slowly scan around
    the object. Keep the camera focused on the surfaces you need and avoid
    moving too quickly.
-4. When scanning is complete, pause if you need to inspect the model.
-5. Save the session from RTAB-Map: select **File → Close database**, then
+6. When scanning is complete, pause if you need to inspect the model.
+7. Save the session from RTAB-Map: select **File → Close database**, then
    confirm saving the `.db` database.
-6. Return to 3D Scanner and select **Refresh sessions**.
+8. Return to 3D Scanner and select **Refresh sessions**.
+
+While RTAB-Map is running, the app locks the profile and preflight controls:
+you **cannot change the profile** during a scan. Close RTAB-Map, choose the
+next profile, then select **Apply & Open RTAB-Map** for the next scan.
 
 RTAB-Map normally saves databases in:
 

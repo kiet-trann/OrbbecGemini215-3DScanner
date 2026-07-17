@@ -1,5 +1,17 @@
 # Scan Workflow
 
+## 3D Scanner camera profile (before RTAB-Map starts)
+
+1. Confirm RTAB-Map is closed.
+2. Open 3D Scanner and choose **Near — Close-up Precision** (0.15--0.32 m)
+   or **Far — Long-distance** (0.20--0.70 m) in **Camera setup**.
+3. Optionally select **Refresh camera settings** to inspect the connected
+   Gemini 215 and its available depth work modes.
+4. Select **Apply & Open RTAB-Map**. The app switches and verifies the chosen
+   mode, releases the camera, and only then starts RTAB-Map.
+5. Do not attempt to change the profile while RTAB-Map is running; close
+   RTAB-Map before choosing a different profile for a new scan.
+
 1. Connect Gemini 215 to the computer.
 2. Start the prototype.
 3. Check RGB and depth views.
