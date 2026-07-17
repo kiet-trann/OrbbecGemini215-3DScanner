@@ -114,6 +114,7 @@ def test_crop_preview_uses_less_detail_while_rotating() -> None:
 
 
 def test_crop_view_presets_define_full_orbit_angles() -> None:
-    assert crop_view_preset("front") == (0.0, 0.0)
-    assert crop_view_preset("back") == (3.141592653589793, 0.0)
-    assert crop_view_preset("top") == (0.0, -1.5707963267948966)
+    assert crop_view_preset("front") == (3.141592653589793, 0.0)
+    assert crop_view_preset("back") == (0.0, 0.0)
+    assert crop_view_preset("top") == (0.0, 1.5707963267948966)
+    assert crop_view_preset("bottom") == (0.0, -1.5707963267948966)
