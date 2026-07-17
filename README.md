@@ -1,5 +1,7 @@
 # 3D Scanner
 
+🇻🇳 [Tiếng Việt](README.md) · 🇬🇧 [English](README.en.md)
+
 Ứng dụng Windows hỗ trợ quy trình scan 3D với **Orbbec Gemini 215** và
 **RTAB-Map**. RTAB-Map đảm nhiệm camera, SLAM và tạo model 3D; 3D Scanner
 giúp mở RTAB-Map, quản lý session đã lưu, xuất OBJ và crop từng vật thể.
@@ -46,10 +48,10 @@ third_party\rtabmap\RTABMap-0.23.1-win64\bin\rtabmap-export.exe
 Nếu chưa có environment Python:
 
 ```powershell
-cd C:\Users\TD-998\OrbbecGemini215-3DScanner
+$ProjectRoot = (Get-Location).Path
 python -m venv .venv
-.\.venv\Scripts\Activate.ps1
-pip install -e .[dev]
+& "$ProjectRoot\.venv\Scripts\Activate.ps1"
+python -m pip install -e .[dev]
 ```
 
 ## Mở ứng dụng
@@ -82,7 +84,7 @@ Khi cần thấy lỗi trong terminal, dùng `python.exe` thay cho `pythonw.exe`
 Database RTAB-Map mặc định nằm tại:
 
 ```text
-C:\Users\TD-998\Documents\RTAB-Map
+%USERPROFILE%\Documents\RTAB-Map
 ```
 
 File `.db` không chỉ là một model OBJ. Nó lưu dữ liệu session/map của RTAB-Map
@@ -124,7 +126,7 @@ trong khoảng 3 giây, app chỉ gửi lệnh **Pause** để bạn kiểm tra 
 
 | Nội dung | Vị trí |
 | --- | --- |
-| Database RTAB-Map đã lưu | `C:\Users\TD-998\Documents\RTAB-Map` |
+| Database RTAB-Map đã lưu | `%USERPROFILE%\Documents\RTAB-Map` |
 | Runtime RTAB-Map | `third_party\rtabmap\RTABMap-0.23.1-win64` |
 | Raw OBJ và cropped OBJ | `outputs\scanner_3d` |
 
