@@ -200,12 +200,12 @@ class scanner_3dWindow:
         render()
 
         def start(event) -> None:
-            selection["x"], selection["y"] = event.x, event.y
-            selection["item"] = canvas.create_rectangle(event.x, event.y, event.x, event.y, outline="#ffbf3f", width=2)
+            state["x"], state["y"] = event.x, event.y
+            state["item"] = canvas.create_rectangle(event.x, event.y, event.x, event.y, outline="#ffbf3f", width=2)
 
         def drag(event) -> None:
-            if selection["item"] is not None:
-                canvas.coords(selection["item"], selection["x"], selection["y"], event.x, event.y)
+            if state["item"] is not None:
+                canvas.coords(state["item"], state["x"], state["y"], event.x, event.y)
 
         def rotate_start(event) -> None:
             state["rotate_x"], state["rotate_y"] = event.x, event.y
@@ -216,19 +216,19 @@ class scanner_3dWindow:
             state["yaw"] = float(state["yaw"]) + (event.x - float(state["rotate_x"])) * 0.012
             state["pitch"] = max(-1.35, min(1.35, float(state["pitch"]) + (event.y - float(state["rotate_y"])) * 0.012))
             state["rotate_x"], state["rotate_y"] = event.x, event.y
-            selection["item"] = None
+            state["item"] = None
             render()
 
         def zoom(event) -> None:
             state["distance"] = max(2.2, min(8.0, float(state["distance"]) - event.delta / 1200.0))
-            selection["item"] = None
+            state["item"] = None
             render()
 
         def create_crop() -> None:
-            if selection["item"] is None:
+            if state["item"] is None:
                 messagebox.showinfo("3D Scanner 3D Scanner", "Drag a rectangle around the object first.", parent=dialog)
                 return
-            x1, y1, x2, y2 = canvas.coords(selection["item"])
+            x1, y1, x2, y2 = canvas.coords(state["item"])
             rectangle = CropRectangle(min(x1, x2), min(y1, y2), max(x1, x2), max(y1, y2))
             output_dir = source_obj.parent.parent / f"cropped_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
             self.status.set("Creating cropped OBJ in the background...")
