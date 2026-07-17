@@ -17,6 +17,7 @@ from scanner_app.rtabmap.models import RuntimeStatus, SavedSession
 from scanner_app.rtabmap.obj_crop import CropRectangle, CropResult, crop_obj_bundle, perspective_projection_for_bounds
 from scanner_app.rtabmap.runtime import RtabmapRuntime
 from scanner_app.rtabmap.windows_bridge import BridgeResult, WindowsRtabmapBridge
+from scanner_app.visualization.crop_catalog import CroppedObjCatalog, CroppedObjOutput
 from scanner_app.visualization.open_actions import OpenActionService
 
 
@@ -44,6 +45,16 @@ def crop_preview_layout() -> CropPreviewLayout:
         view_instructions="Right-drag to rotate - wheel to zoom",
         crop_instructions="Left-drag one rectangle around the part to keep",
     )
+
+
+def selected_crop_path(outputs: list[CroppedObjOutput], selection: tuple[str, ...]) -> Path | None:
+    if not selection:
+        return None
+    try:
+        index = int(selection[0])
+    except ValueError:
+        return None
+    return outputs[index].path if 0 <= index < len(outputs) else None
 
 
 class scanner_3dController:
@@ -89,10 +100,11 @@ class scanner_3dWindow:
         self.status = tk.StringVar(value="Ready")
         self.auto_status = tk.StringVar(value="Auto-pause is off")
         self.sessions: list[SavedSession] = []
-        self.latest_cropped_obj: Path | None = None
+        self.crop_catalog = CroppedObjCatalog(output_root)
+        self.cropped_outputs: list[CroppedObjOutput] = []
         self.open_actions = OpenActionService()
         root.title("3D Scanner 3D Scanner")
-        root.geometry("760x520")
+        root.geometry("760x720")
         self._build()
         self.refresh()
         self._poll_auto_pause()
@@ -112,7 +124,7 @@ class scanner_3dWindow:
         ttk.Label(frame, textvariable=self.auto_status).pack(anchor=tk.W, pady=(10, 6))
         sessions = ttk.LabelFrame(frame, text="Saved RTAB-Map sessions", padding=8)
         sessions.pack(fill=tk.BOTH, expand=True)
-        self.tree = ttk.Treeview(sessions, columns=("size", "modified"), show="tree headings", height=10)
+        self.tree = ttk.Treeview(sessions, columns=("size", "modified"), show="tree headings", height=6)
         self.tree.heading("#0", text="Database")
         self.tree.heading("size", text="Size")
         self.tree.heading("modified", text="Modified (UTC)")
@@ -120,6 +132,19 @@ class scanner_3dWindow:
         self.tree.column("size", width=100)
         self.tree.column("modified", width=180)
         self.tree.pack(fill=tk.BOTH, expand=True)
+        crops = ttk.LabelFrame(frame, text="Cropped OBJ outputs", padding=8)
+        crops.pack(fill=tk.BOTH, expand=True, pady=(8, 0))
+        self.crop_tree = ttk.Treeview(crops, columns=("obj", "folder", "size", "modified"), show="headings", height=6)
+        self.crop_tree.heading("obj", text="OBJ")
+        self.crop_tree.heading("folder", text="Output folder")
+        self.crop_tree.heading("size", text="Size")
+        self.crop_tree.heading("modified", text="Modified (UTC)")
+        self.crop_tree.column("obj", width=230)
+        self.crop_tree.column("folder", width=190)
+        self.crop_tree.column("size", width=90)
+        self.crop_tree.column("modified", width=180)
+        self.crop_tree.pack(fill=tk.BOTH, expand=True)
+        self.crop_tree.bind("<<TreeviewSelect>>", self._on_crop_selection)
         actions = ttk.Frame(frame)
         actions.pack(fill=tk.X, pady=(8, 0))
         ttk.Button(actions, text="Refresh sessions", command=self.refresh).pack(side=tk.LEFT)
@@ -146,6 +171,38 @@ class scanner_3dWindow:
         for index, session in enumerate(self.sessions):
             self.tree.insert("", tk.END, iid=str(index), text=session.path.name,
                              values=(f"{session.size_bytes / 1024 / 1024:.1f} MB", session.modified_at.isoformat()))
+        self.refresh_crop_outputs()
+
+    def refresh_crop_outputs(self, select_path: Path | None = None) -> None:
+        self.cropped_outputs = self.crop_catalog.refresh()
+        self.crop_tree.delete(*self.crop_tree.get_children())
+        selected_id: str | None = None
+        for index, output in enumerate(self.cropped_outputs):
+            identifier = str(index)
+            self.crop_tree.insert(
+                "", tk.END, iid=identifier,
+                values=(
+                    output.path.name,
+                    output.output_dir.name,
+                    f"{output.size_bytes / 1024 / 1024:.1f} MB",
+                    output.modified_at.isoformat(),
+                ),
+            )
+            if select_path is not None and output.path == select_path.resolve():
+                selected_id = identifier
+        if selected_id is not None:
+            self.crop_tree.selection_set(selected_id)
+            self.crop_tree.focus(selected_id)
+            self.crop_tree.see(selected_id)
+        self._set_crop_action_state()
+
+    def _on_crop_selection(self, _event=None) -> None:
+        self._set_crop_action_state()
+
+    def _set_crop_action_state(self) -> None:
+        state = tk.NORMAL if selected_crop_path(self.cropped_outputs, self.crop_tree.selection()) else tk.DISABLED
+        self.open_obj_button.configure(state=state)
+        self.open_folder_button.configure(state=state)
 
     def _toggle_auto_pause(self) -> None:
         if not self.auto_enabled.get():
@@ -318,22 +375,22 @@ class scanner_3dWindow:
         self.root.after(0, lambda: self._record_crop_result(result))
 
     def _record_crop_result(self, result: CropResult) -> None:
-        self.latest_cropped_obj = result.obj
-        self.open_obj_button.configure(state=tk.NORMAL)
-        self.open_folder_button.configure(state=tk.NORMAL)
+        self.refresh_crop_outputs(select_path=result.obj)
         self.status.set(f"Cropped OBJ: {result.obj}")
 
     def open_latest_cropped_obj(self) -> None:
-        if self.latest_cropped_obj is None:
-            self.status.set("Crop an OBJ first")
+        path = selected_crop_path(self.cropped_outputs, self.crop_tree.selection())
+        if path is None:
+            self.status.set("Select a cropped OBJ output first")
             return
-        self.status.set(self.open_actions.open_obj(self.latest_cropped_obj).message)
+        self.status.set(self.open_actions.open_obj(path).message)
 
     def open_latest_output_folder(self) -> None:
-        if self.latest_cropped_obj is None:
-            self.status.set("Crop an OBJ first")
+        path = selected_crop_path(self.cropped_outputs, self.crop_tree.selection())
+        if path is None:
+            self.status.set("Select a cropped OBJ output first")
             return
-        self.status.set(self.open_actions.open_folder(self.latest_cropped_obj).message)
+        self.status.set(self.open_actions.open_folder(path).message)
 
 
 def _read_obj_mesh(path: Path) -> tuple[list[tuple[float, float, float]], list[tuple[int, ...]]]:
