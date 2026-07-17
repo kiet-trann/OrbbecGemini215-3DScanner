@@ -21,6 +21,8 @@ from scanner_app.rtabmap.obj_crop import (
 )
 from scanner_app.rtabmap.runtime import RtabmapRuntime
 from scanner_app.rtabmap.windows_bridge import BridgeResult, WindowsRtabmapBridge
+from scanner_app.camera.models import CameraProfile, CameraSettingsSnapshot
+from scanner_app.camera.preflight import CameraPreflight
 from scanner_app.visualization.crop_catalog import CroppedObjCatalog, CroppedObjOutput
 from scanner_app.visualization.open_actions import OpenActionService
 
@@ -32,6 +34,9 @@ class DashboardState:
     auto_pause_message: str
     sessions: tuple[SavedSession, ...]
     busy: bool
+    camera_profile: CameraProfile
+    camera_snapshot: CameraSettingsSnapshot | None
+    camera_controls_locked: bool
 
 
 @dataclass(frozen=True)
@@ -76,11 +81,14 @@ def selected_crop_path(outputs: list[CroppedObjOutput], selection: tuple[str, ..
 
 
 class Scanner3DController:
-    def __init__(self, *, runtime, bridge, monitor, catalog) -> None:
+    def __init__(self, *, runtime, bridge, monitor, catalog, preflight=None) -> None:
         self._runtime = runtime
         self._bridge = bridge
         self._monitor = monitor
         self._catalog = catalog
+        self._preflight = preflight
+        self._camera_profile = CameraProfile.NEAR
+        self._camera_snapshot: CameraSettingsSnapshot | None = None
         self._busy = False
 
     def refresh(self) -> DashboardState:
@@ -94,10 +102,44 @@ class Scanner3DController:
         else:
             message = "Auto-pause ready (experimental)"
             available = True
-        return DashboardState(self._runtime.status().message, available, message, tuple(self._catalog.refresh()), self._busy)
+        runtime_status = self._runtime.status()
+        return DashboardState(
+            runtime_status.message,
+            available,
+            message,
+            tuple(self._catalog.refresh()),
+            self._busy,
+            self._camera_profile,
+            self._camera_snapshot,
+            runtime_status.running,
+        )
 
     def launch(self) -> RuntimeStatus:
+        return self.apply_and_launch()
+
+    def set_camera_profile(self, profile: CameraProfile) -> None:
+        self._assert_camera_controls_unlocked()
+        self._camera_profile = profile
+        self._camera_snapshot = None
+
+    def inspect_camera(self) -> CameraSettingsSnapshot:
+        self._assert_camera_controls_unlocked()
+        self._camera_snapshot = self._preflight_service().inspect(self._camera_profile)
+        return self._camera_snapshot
+
+    def apply_and_launch(self) -> RuntimeStatus:
+        self._assert_camera_controls_unlocked()
+        self._camera_snapshot = self._preflight_service().apply(self._camera_profile)
         return self._runtime.launch()
+
+    def _preflight_service(self):
+        if self._preflight is None:
+            raise RuntimeError("Camera preflight is unavailable.")
+        return self._preflight
+
+    def _assert_camera_controls_unlocked(self) -> None:
+        if self._runtime.status().running:
+            raise RuntimeError("Camera profile is locked while RTAB-Map is running.")
 
     def request_pause(self) -> BridgeResult:
         return self._bridge.pause()
@@ -464,7 +506,9 @@ def main() -> int:
     bridge = WindowsRtabmapBridge()
     monitor = ActivityMonitor(pause=bridge.pause)
     catalog = SessionCatalog(session_dir, project_root / "outputs" / "scanner_3d" / "catalog.json")
-    controller = Scanner3DController(runtime=runtime, bridge=bridge, monitor=monitor, catalog=catalog)
+    controller = Scanner3DController(
+        runtime=runtime, bridge=bridge, monitor=monitor, catalog=catalog, preflight=CameraPreflight()
+    )
     root = tk.Tk()
     Scanner3DWindow(root, controller=controller, monitor=monitor,
                          probe=SqliteNodeCountProbe(session_dir / "rtabmap.tmp.db"), catalog=catalog,
