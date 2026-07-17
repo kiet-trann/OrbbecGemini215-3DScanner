@@ -3,7 +3,7 @@
 ## Goal
 
 Let an operator reopen any previously created cropped OBJ after restarting 3D
-3D Scanner, without relying on in-memory state from the latest crop.
+Scanner, without relying on in-memory state from the latest crop.
 
 ## Discovery service
 

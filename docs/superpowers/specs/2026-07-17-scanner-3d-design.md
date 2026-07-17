@@ -91,7 +91,7 @@ disabled and clearly labelled unavailable; the rest of the app is not blocked.
 ## Sessions, export, and crop
 
 Saving remains a manual RTAB-Map action: File -> Close database -> Save. 3D
-3D Scanner detects the saved file and adds it to the catalog; it does not move,
+Scanner detects the saved file and adds it to the catalog; it does not move,
 rename, or rewrite it. Each export is placed in a folder derived from the
 session stem and timestamp, with the command log and export metadata beside it.
 

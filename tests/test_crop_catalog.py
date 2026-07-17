@@ -1,4 +1,5 @@
 import os
+import json
 from pathlib import Path
 
 try:
@@ -33,3 +34,21 @@ def test_refresh_lists_only_cropped_objs_newest_first_without_writing_them(tmp_p
 
 def test_refresh_ignores_missing_root(tmp_path: Path) -> None:
     assert CroppedObjCatalog(tmp_path / "missing").refresh() == []
+
+
+def test_refresh_includes_crops_from_sibling_roots_with_session_catalogs(tmp_path: Path) -> None:
+    outputs = tmp_path / "outputs"
+    current_root = outputs / "scanner_3d"
+    prior_root = outputs / "prior_scanner"
+    unrelated_root = outputs / "obj"
+    current_crop = current_root / "current" / "current_cropped.obj"
+    prior_crop = prior_root / "previous" / "previous_cropped.obj"
+    unrelated_crop = unrelated_root / "not_a_session_cropped.obj"
+    for crop in (current_crop, prior_crop, unrelated_crop):
+        crop.parent.mkdir(parents=True)
+        crop.write_text(crop.stem, encoding="utf-8")
+    (prior_root / "catalog.json").write_text(json.dumps({"sessions": []}), encoding="utf-8")
+
+    discovered = CroppedObjCatalog(current_root).refresh()
+
+    assert {output.path for output in discovered} == {current_crop.resolve(), prior_crop.resolve()}
