@@ -40,6 +40,18 @@ class CropResult:
     obj: Path
 
 
+def preview_stride(item_count: int, maximum_items: int) -> int:
+    limit = max(1, maximum_items)
+    return max(1, (item_count + limit - 1) // limit)
+
+
+def sample_projected_vertices(
+    vertices: list[tuple[float, float, float]], projection: CameraProjection, maximum_items: int
+) -> list[tuple[float, float]]:
+    stride = preview_stride(len(vertices), maximum_items)
+    return [point for vertex in vertices[::stride] if (point := projection.project((*vertex, 1.0))) is not None]
+
+
 def projection_for_bounds(
     vertices: list[tuple[float, float, float]], *, viewport_width: int, viewport_height: int
 ) -> CameraProjection:

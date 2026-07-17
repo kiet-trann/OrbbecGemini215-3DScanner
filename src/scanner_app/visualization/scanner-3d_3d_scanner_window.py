@@ -14,7 +14,10 @@ from scanner_app.rtabmap.activity import ActivityMonitor, AutoPauseState, Sqlite
 from scanner_app.rtabmap.catalog import SessionCatalog
 from scanner_app.rtabmap.exporter import ExportRequest, ExportService
 from scanner_app.rtabmap.models import RuntimeStatus, SavedSession
-from scanner_app.rtabmap.obj_crop import CropRectangle, CropResult, crop_obj_bundle, perspective_projection_for_bounds
+from scanner_app.rtabmap.obj_crop import (
+    CropRectangle, CropResult, crop_obj_bundle, perspective_projection_for_bounds,
+    preview_stride, sample_projected_vertices,
+)
 from scanner_app.rtabmap.runtime import RtabmapRuntime
 from scanner_app.rtabmap.windows_bridge import BridgeResult, WindowsRtabmapBridge
 from scanner_app.visualization.crop_catalog import CroppedObjCatalog, CroppedObjOutput
@@ -45,6 +48,10 @@ def crop_preview_layout() -> CropPreviewLayout:
         view_instructions="Right-drag to rotate - wheel to zoom",
         crop_instructions="Left-drag one rectangle around the part to keep",
     )
+
+
+def crop_preview_limits() -> tuple[int, int]:
+    return 700, 2_800
 
 
 def selected_crop_path(outputs: list[CroppedObjOutput], selection: tuple[str, ...]) -> Path | None:
@@ -280,28 +287,35 @@ class scanner_3dWindow:
         canvas.pack(padx=6, pady=(0, 6))
         state: dict[str, float | int | None | object] = {"yaw": 0.65, "pitch": -0.25, "distance": 3.5,
                                                            "x": None, "y": None, "item": None,
-                                                           "rotate_x": None, "rotate_y": None, "projection": None}
+                                                           "rotate_x": None, "rotate_y": None, "projection": None,
+                                                           "scheduled": None}
 
-        def render() -> None:
+        def render_3d(maximum_faces: int) -> None:
             projection = perspective_projection_for_bounds(
                 vertices, viewport_width=width, viewport_height=height,
                 yaw=float(state["yaw"]), pitch=float(state["pitch"]), distance=float(state["distance"]),
             )
             state["projection"] = projection
-            canvas.delete("mesh")
             view_canvas.delete("mesh")
             view_canvas.delete("kept")
-            stride = max(1, len(faces) // 2800)
+            stride = preview_stride(len(faces), maximum_faces)
             for number, face in enumerate(faces[::stride]):
                 points = [projection.project((*vertices[index - 1], 1.0)) for index in face]
                 if all(point is not None for point in points):
                     flat = [coordinate for point in points for coordinate in point]
                     shade = 55 + (number % 4) * 12
                     color = f"#{15:02x}{shade:02x}{min(155, shade + 55):02x}"
-                    canvas.create_polygon(*flat, fill=color, outline="#255a73", tags="mesh")
                     view_canvas.create_polygon(*flat, fill=color, outline="#255a73", tags="mesh")
 
-        render()
+        def render_crop_plane() -> None:
+            canvas.delete("mesh")
+            projection = state["projection"]
+            for x, y in sample_projected_vertices(vertices, projection, maximum_items=10_000):
+                canvas.create_line(x, y, x + 1, y, fill="#9ddcf5", tags="mesh")
+
+        moving_limit, settled_limit = crop_preview_limits()
+        render_3d(settled_limit)
+        render_crop_plane()
 
         def show_kept_preview() -> None:
             view_canvas.delete("kept")
@@ -310,7 +324,7 @@ class scanner_3dWindow:
             x1, y1, x2, y2 = canvas.coords(state["item"])
             rectangle = CropRectangle(min(x1, x2), min(y1, y2), max(x1, x2), max(y1, y2))
             projection = state["projection"]
-            stride = max(1, len(faces) // 2800)
+            stride = preview_stride(len(faces), settled_limit)
             for face in faces[::stride]:
                 points = [projection.project((*vertices[index - 1], 1.0)) for index in face]
                 if all(point is not None and rectangle.contains(*point) for point in points):
@@ -327,7 +341,9 @@ class scanner_3dWindow:
         def drag(event) -> None:
             if state["item"] is not None:
                 canvas.coords(state["item"], state["x"], state["y"], event.x, event.y)
-                show_kept_preview()
+
+        def crop_release(_event) -> None:
+            show_kept_preview()
 
         def rotate_start(event) -> None:
             state["rotate_x"], state["rotate_y"] = event.x, event.y
@@ -340,13 +356,24 @@ class scanner_3dWindow:
             state["rotate_x"], state["rotate_y"] = event.x, event.y
             canvas.delete("selection")
             state["item"] = None
-            render()
+            if state["scheduled"] is None:
+                state["scheduled"] = dialog.after(33, moving_render)
+
+        def moving_render() -> None:
+            state["scheduled"] = None
+            render_3d(moving_limit)
+
+        def rotate_end(_event) -> None:
+            state["rotate_x"] = None
+            render_3d(settled_limit)
+            render_crop_plane()
 
         def zoom(event) -> None:
             state["distance"] = max(2.2, min(8.0, float(state["distance"]) - event.delta / 1200.0))
             canvas.delete("selection")
             state["item"] = None
-            render()
+            render_3d(settled_limit)
+            render_crop_plane()
 
         def create_crop() -> None:
             if state["item"] is None:
@@ -361,8 +388,10 @@ class scanner_3dWindow:
 
         canvas.bind("<Button-1>", start)
         canvas.bind("<B1-Motion>", drag)
+        canvas.bind("<ButtonRelease-1>", crop_release)
         view_canvas.bind("<Button-3>", rotate_start)
         view_canvas.bind("<B3-Motion>", rotate)
+        view_canvas.bind("<ButtonRelease-3>", rotate_end)
         view_canvas.bind("<MouseWheel>", zoom)
         ttk.Button(dialog, text="Create cropped OBJ", command=create_crop).pack(pady=(0, 10))
 
