@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from pathlib import Path
 
 try:
@@ -11,9 +12,11 @@ add_src_to_path()
 from scanner_app.rtabmap.activity import AutoPauseState
 from scanner_app.rtabmap.models import RuntimeStatus, SavedSession
 from scanner_app.rtabmap.windows_bridge import BridgeResult
+from scanner_app.visualization.crop_catalog import CroppedObjOutput
 from scanner_app.visualization.scanner_3d_window import (
     scanner_3dController,
     crop_preview_layout,
+    selected_crop_path,
 )
 
 
@@ -86,3 +89,16 @@ def test_crop_preview_separates_3d_navigation_from_rectangle_selection() -> None
     assert "Right-drag" in layout.view_instructions
     assert "wheel" in layout.view_instructions
     assert "Left-drag" in layout.crop_instructions
+
+
+def test_selected_crop_path_returns_selected_catalog_output(tmp_path: Path) -> None:
+    output = CroppedObjOutput(
+        tmp_path / "crop" / "model_cropped.obj",
+        tmp_path / "crop",
+        12,
+        datetime.now(timezone.utc),
+    )
+
+    assert selected_crop_path([output], ("0",)) == output.path
+    assert selected_crop_path([output], ()) is None
+    assert selected_crop_path([output], ("5",)) is None
