@@ -22,11 +22,15 @@ class CroppedObjCatalog:
         outputs: list[CroppedObjOutput] = []
         for root in self._discovery_roots():
             for path in root.rglob("*_cropped.obj"):
+                if path.parent.name == "viewer":
+                    continue
+                compatible = path.parent / "viewer" / path.name
+                exposed = compatible if compatible.is_file() else path
                 try:
-                    stat = path.stat()
+                    stat = exposed.stat()
                 except OSError:
                     continue
-                resolved = path.resolve()
+                resolved = exposed.resolve()
                 outputs.append(
                     CroppedObjOutput(
                         path=resolved,
