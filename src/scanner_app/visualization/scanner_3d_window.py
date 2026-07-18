@@ -199,6 +199,7 @@ class Scanner3DWindow:
         self.crop_catalog = CroppedObjCatalog(output_root)
         self.cropped_outputs: list[CroppedObjOutput] = []
         self.open_actions = OpenActionService()
+        self.latest_export_model: Path | None = None
         root.title("3D Scanner")
         root.geometry("760x900")
         self._build()
@@ -281,6 +282,10 @@ class Scanner3DWindow:
             actions, text="Open cropped model", command=self.open_latest_cropped_obj, state=tk.DISABLED
         )
         self.open_obj_button.pack(side=tk.RIGHT, padx=(0, 8))
+        self.open_exported_button = ttk.Button(
+            actions, text="Open exported model", command=self.open_latest_exported_model, state=tk.DISABLED
+        )
+        self.open_exported_button.pack(side=tk.RIGHT, padx=(0, 8))
         ttk.Button(actions, text="Crop raw OBJ", command=self.choose_crop_source).pack(side=tk.RIGHT, padx=(0, 8))
         ttk.Button(actions, text="Export raw OBJ", command=self.export_selected).pack(side=tk.RIGHT)
 
@@ -407,8 +412,14 @@ class Scanner3DWindow:
 
     def _export_worker(self, session: SavedSession) -> None:
         result = self.exporter.export(ExportRequest(session.path, self.output_root))
+        self.root.after(0, lambda: self._record_export_result(result))
+
+    def _record_export_result(self, result) -> None:
+        if result.error is None and result.viewer_model is not None:
+            self.latest_export_model = result.viewer_model
+            self.open_exported_button.configure(state=tk.NORMAL)
         message = result.error or f"Exported for 3D Viewer: {result.viewer_model or result.obj}"
-        self.root.after(0, lambda: self.status.set(message))
+        self.status.set(message)
 
     def choose_crop_source(self) -> None:
         selected = filedialog.askopenfilename(
@@ -585,6 +596,12 @@ class Scanner3DWindow:
             self.status.set("Select a cropped OBJ output first")
             return
         self.status.set(self.open_actions.open_obj(path).message)
+
+    def open_latest_exported_model(self) -> None:
+        if self.latest_export_model is None:
+            self.status.set("Export a model first")
+            return
+        self.status.set(self.open_actions.open_obj(self.latest_export_model).message)
 
     def open_latest_output_folder(self) -> None:
         path = selected_crop_path(self.cropped_outputs, self.crop_tree.selection())
