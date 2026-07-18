@@ -1,37 +1,41 @@
-# 3D Viewer compatible OBJ export
+# 3D Viewer compatible GLB export
 
 ## Goal
 
-Allow the Windows 3D Viewer to show the colour texture of RTAB-Map OBJ exports without changing or discarding the original full-resolution bundle.
+Allow Windows 3D Viewer to show the colour texture of RTAB-Map scans without changing or discarding the original full-resolution OBJ bundle.
+
+## Evidence and decision
+
+The original and the 4096-pixel compatibility OBJ bundles contain valid `mtllib`, `usemtl`, UV coordinates, MTL `map_Kd`, and JPEG files. Windows 3D Viewer still renders them white. Therefore external OBJ/MTL textures are not a reliable interface for this application.
+
+The compatible output will be a binary glTF (`.glb`) instead. A GLB embeds the mesh, UV coordinates, material, and JPEG texture in one file, avoiding the external-material import path that failed in Windows 3D Viewer.
 
 ## Scope
 
-After RTAB-Map produces a valid textured OBJ bundle, the application will create a second, viewer-compatible bundle. Its texture images will be JPEG files capped at 4096 pixels on their longest edge. The OBJ and MTL files will preserve the original mesh, UV coordinates, materials, and relative texture references.
+After RTAB-Map produces a valid textured OBJ bundle, the application will create `viewer/<mesh>.glb` beside the untouched raw bundle. The GLB uses a JPEG texture capped at 4096 pixels on its longest edge. Cropping continues to use the raw OBJ for full source quality and produces its own `viewer/<cropped-mesh>.glb` before publishing the crop.
 
-The raw RTAB-Map bundle remains unchanged. Cropping continues to use that raw bundle for maximum source quality. Each crop result will also receive a viewer-compatible copy. The crop catalog and **Open cropped OBJ** action will refer to the compatible OBJ, so opening remains a single-file action for the operator.
+The converter supports one textured material, which matches the current RTAB-Map exports. It must reject a source with zero or more than one textured material rather than emitting a visually incorrect GLB.
 
 ## Design
 
-Create a focused compatibility-bundle service that:
+Create a focused GLB writer that:
 
-1. Copies the OBJ and MTL files into a sibling `viewer` output directory.
-2. Reads each `map_Kd` reference from the copied MTL files.
-3. Re-encodes referenced JPG, JPEG, or PNG textures to JPEG at at most 4096 pixels, preserving aspect ratio; images already within the limit are copied without enlargement.
-4. Rewrites the copied MTL's `map_Kd` entries to the compatible texture filenames.
-5. Fails the compatible-bundle step with a clear error while preserving the original raw or crop bundle.
+1. Parses an OBJ's positions, UVs, normals, triangular faces, `mtllib`, `usemtl`, and its one `map_Kd` texture.
+2. Creates render vertices from the unique `(position, UV, normal)` combinations used by face corners.
+3. Resizes and encodes the diffuse texture to JPEG at a maximum 4096-pixel edge using existing OpenCV.
+4. Writes a glTF 2.0 JSON chunk and binary chunk containing positions, normals, UVs, indices, and JPEG image bytes according to the GLB 2.0 container format.
+5. Publishes the completed GLB atomically at `viewer/<source-stem>.glb`; on failure, keeps the raw export or crop untouched.
 
-Windows image APIs already available with the desktop runtime will perform the resize; no third-party Python package will be introduced.
+No new third-party dependency is introduced. Open3D can read the source texture but cannot write textured GLB files, so the narrow writer is intentionally local to this workflow.
 
 ## User-facing behavior
 
-- The existing exported raw OBJ stays available as the high-resolution source.
-- A compatible bundle is created automatically after export and after crop.
-- The application reports the compatible OBJ path on success.
-- **Open cropped OBJ** opens the compatible OBJ by default.
-- Existing crop bundles remain readable; only newly created export/crop outputs gain the compatible copy.
+- The raw OBJ/MTL/full-resolution texture remains the source bundle for future MeshLab or Blender use.
+- Each new export and crop gains a `viewer/*.glb` file for Windows 3D Viewer.
+- The crop catalog prefers the viewer GLB when present; legacy raw OBJ crops remain discoverable.
+- The action label becomes **Open cropped model** and opens the GLB by default.
+- Compatibility errors report the source/material problem without deleting raw artifacts.
 
 ## Verification
 
-Automated tests will first prove that the compatibility service creates a separate bundle, caps an oversized texture at 4096 pixels, preserves the source artifacts, and leaves a valid OBJ-to-MTL-to-texture reference chain. Export and crop integration tests will verify that their default/opened path is the compatible OBJ.
-
-Manual verification: create a new scan export, open the compatible OBJ in Windows 3D Viewer, and confirm that its material texture is shown.
+Tests first prove that a GLB has the `glTF` header, embeds an image, defines a base-colour texture, caps the image at 4096 pixels, and leaves the source OBJ bundle unchanged. Integration tests verify export/crop path generation and catalog preference. Manual verification opens a generated GLB in Windows 3D Viewer and confirms texture colour appears.
