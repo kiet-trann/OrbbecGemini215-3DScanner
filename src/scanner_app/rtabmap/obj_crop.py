@@ -6,7 +6,7 @@ import shutil
 
 import numpy as np
 
-from scanner_app.rtabmap.viewer_bundle import create_3d_viewer_bundle
+from scanner_app.rtabmap.glb_bundle import create_3d_viewer_glb
 
 
 @dataclass(frozen=True)
@@ -40,7 +40,7 @@ class CameraProjection:
 class CropResult:
     output_dir: Path
     obj: Path
-    viewer_obj: Path
+    viewer_model: Path
 
 
 def preview_stride(item_count: int, maximum_items: int) -> int:
@@ -157,7 +157,7 @@ def crop_obj_bundle(source_obj: Path, rectangle: CropRectangle, projection: Came
                     texture = source_obj.parent / line.split(maxsplit=1)[1]
                     if texture.is_file():
                         shutil.copy2(texture, temporary / texture.name)
-        viewer = create_3d_viewer_bundle(obj, temporary / "viewer")
+        viewer_model = create_3d_viewer_glb(obj, temporary / "viewer" / f"{obj.stem}.glb")
         temporary.replace(output_dir)
     except BaseException:
         shutil.rmtree(temporary, ignore_errors=True)
@@ -165,5 +165,5 @@ def crop_obj_bundle(source_obj: Path, rectangle: CropRectangle, projection: Came
     return CropResult(
         output_dir=output_dir,
         obj=output_dir / obj.name,
-        viewer_obj=output_dir / "viewer" / viewer.obj.name,
+        viewer_model=output_dir / "viewer" / viewer_model.name,
     )

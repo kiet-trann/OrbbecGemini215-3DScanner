@@ -278,7 +278,7 @@ class Scanner3DWindow:
         )
         self.open_folder_button.pack(side=tk.RIGHT, padx=(0, 8))
         self.open_obj_button = ttk.Button(
-            actions, text="Open cropped OBJ", command=self.open_latest_cropped_obj, state=tk.DISABLED
+            actions, text="Open cropped model", command=self.open_latest_cropped_obj, state=tk.DISABLED
         )
         self.open_obj_button.pack(side=tk.RIGHT, padx=(0, 8))
         ttk.Button(actions, text="Crop raw OBJ", command=self.choose_crop_source).pack(side=tk.RIGHT, padx=(0, 8))
@@ -407,7 +407,7 @@ class Scanner3DWindow:
 
     def _export_worker(self, session: SavedSession) -> None:
         result = self.exporter.export(ExportRequest(session.path, self.output_root))
-        message = result.error or f"Exported for 3D Viewer: {result.viewer_obj or result.obj}"
+        message = result.error or f"Exported for 3D Viewer: {result.viewer_model or result.obj}"
         self.root.after(0, lambda: self.status.set(message))
 
     def choose_crop_source(self) -> None:
@@ -576,8 +576,8 @@ class Scanner3DWindow:
         self.root.after(0, lambda: self._record_crop_result(result))
 
     def _record_crop_result(self, result: CropResult) -> None:
-        self.refresh_crop_outputs(select_path=result.viewer_obj)
-        self.status.set(f"Cropped OBJ: {result.viewer_obj}")
+        self.refresh_crop_outputs(select_path=result.viewer_model)
+        self.status.set(f"Cropped model: {result.viewer_model}")
 
     def open_latest_cropped_obj(self) -> None:
         path = selected_crop_path(self.cropped_outputs, self.crop_tree.selection())

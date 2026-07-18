@@ -209,7 +209,7 @@ def test_crop_preview_separates_3d_navigation_from_rectangle_selection() -> None
 
 def test_selected_crop_path_returns_selected_catalog_output(tmp_path: Path) -> None:
     output = CroppedObjOutput(
-        tmp_path / "crop" / "viewer" / "model_cropped.obj",
+        tmp_path / "crop" / "viewer" / "model_cropped.glb",
         tmp_path / "crop" / "viewer",
         12,
         datetime.now(timezone.utc),
@@ -236,13 +236,13 @@ def test_record_crop_result_selects_compatible_obj(tmp_path: Path) -> None:
     result = CropResult(
         tmp_path / "crop",
         tmp_path / "crop" / "model_cropped.obj",
-        tmp_path / "crop" / "viewer" / "model_cropped.obj",
+        tmp_path / "crop" / "viewer" / "model_cropped.glb",
     )
 
     window._record_crop_result(result)
 
-    assert selected == [result.viewer_obj]
-    assert window.status.value == f"Cropped OBJ: {result.viewer_obj}"
+    assert selected == [result.viewer_model]
+    assert window.status.value == f"Cropped model: {result.viewer_model}"
 
 
 def test_crop_preview_uses_less_detail_while_rotating() -> None:

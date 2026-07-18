@@ -7,7 +7,7 @@ from datetime import datetime
 from pathlib import Path
 import subprocess
 
-from scanner_app.rtabmap.viewer_bundle import create_3d_viewer_bundle
+from scanner_app.rtabmap.glb_bundle import create_3d_viewer_glb
 
 
 @dataclass(frozen=True)
@@ -22,7 +22,7 @@ class ExportResult:
     obj: Path | None
     mtl: Path | None
     textures: tuple[Path, ...]
-    viewer_obj: Path | None
+    viewer_model: Path | None
     log: Path
     error: str | None
 
@@ -70,10 +70,13 @@ class ExportService:
         if result.error is not None or result.obj is None:
             return result
         try:
-            viewer = create_3d_viewer_bundle(result.obj, output_dir.parent / "viewer")
+            viewer_model = create_3d_viewer_glb(
+                result.obj,
+                output_dir.parent / "viewer" / f"{result.obj.stem}.glb",
+            )
         except (OSError, ValueError) as error:
-            return replace(result, error=f"3D Viewer bundle failed: {error}")
-        return replace(result, viewer_obj=viewer.obj)
+            return replace(result, error=f"3D Viewer model failed: {error}")
+        return replace(result, viewer_model=viewer_model)
 
     @staticmethod
     def _validate(output_dir: Path, log_path: Path, returncode: int) -> ExportResult:

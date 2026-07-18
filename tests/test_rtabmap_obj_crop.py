@@ -31,7 +31,11 @@ def write_bundle(directory: Path, texture_size: tuple[int, int] = (64, 64)) -> P
     (directory / "mesh.mtl").write_text("newmtl material\nmap_Kd texture.jpg\n", encoding="utf-8")
     obj = directory / "mesh.obj"
     obj.write_text(
-        "mtllib mesh.mtl\nusemtl material\nv -0.5 -0.5 0 1\nv 0.5 -0.5 0 1\nv 0 0.5 0 1\nv 2 2 0 1\nf 1 2 3\nf 2 3 4\n",
+        "\n".join((
+            "mtllib mesh.mtl", "usemtl material", "v -0.5 -0.5 0", "v 0.5 -0.5 0",
+            "v 0 0.5 0", "v 2 2 0", "vt 0 0", "vt 1 0", "vt 0 1", "vt 1 1",
+            "vn 0 0 1", "f 1/1/1 2/2/1 3/3/1", "f 2/2/1 3/3/1 4/4/1", "",
+        )),
         encoding="utf-8",
     )
     return obj
@@ -63,10 +67,10 @@ def test_crop_creates_compatible_child_without_changing_raw_crop_texture(tmp_pat
     )
 
     raw_image = cv2.imread(str(result.output_dir / "texture.jpg"), cv2.IMREAD_UNCHANGED)
-    viewer_image = cv2.imread(str(result.viewer_obj.parent / "texture_viewer.jpg"), cv2.IMREAD_UNCHANGED)
     assert raw_image is not None and raw_image.shape[:2] == (2049, 4097)
-    assert viewer_image is not None and viewer_image.shape[:2] == (2048, 4096)
-    assert result.viewer_obj.is_file()
+    assert result.viewer_model.is_file()
+    assert result.viewer_model.suffix == ".glb"
+    assert result.viewer_model.read_bytes()[:4] == b"glTF"
 
 
 def test_crop_rejects_an_empty_selection_without_creating_output(tmp_path: Path) -> None:

@@ -24,7 +24,7 @@ class CroppedObjCatalog:
             for path in root.rglob("*_cropped.obj"):
                 if path.parent.name == "viewer":
                     continue
-                compatible = path.parent / "viewer" / path.name
+                compatible = path.parent / "viewer" / f"{path.stem}.glb"
                 exposed = compatible if compatible.is_file() else path
                 try:
                     stat = exposed.stat()

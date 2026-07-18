@@ -72,6 +72,15 @@ def embedded_image(document: dict[str, object], binary: bytes) -> np.ndarray:
     return decoded
 
 
+def embedded_uvs(document: dict[str, object], binary: bytes) -> np.ndarray:
+    accessor = document["accessors"][2]
+    view = document["bufferViews"][accessor["bufferView"]]
+    offset = view.get("byteOffset", 0)
+    return np.frombuffer(
+        binary[offset:offset + view["byteLength"]], dtype="<f4"
+    ).reshape((-1, 2))
+
+
 def test_create_3d_viewer_glb_embeds_capped_texture_without_changing_source(tmp_path: Path) -> None:
     source = write_textured_obj(tmp_path / "raw", texture_size=(8192, 4096))
     output = tmp_path / "raw" / "viewer" / "mesh.glb"
@@ -85,5 +94,6 @@ def test_create_3d_viewer_glb_embeds_capped_texture_without_changing_source(tmp_
     assert document["asset"]["version"] == "2.0"
     assert document["materials"][0]["pbrMetallicRoughness"]["baseColorTexture"] == {"index": 0}
     assert document["images"][0]["mimeType"] == "image/jpeg"
+    assert np.array_equal(embedded_uvs(document, binary), np.array(((0, 1), (1, 1), (0, 0)), dtype=np.float32))
     source_image = cv2.imread(str(tmp_path / "raw" / "texture.jpg"), cv2.IMREAD_UNCHANGED)
     assert source_image is not None and source_image.shape[:2] == (4096, 8192)
