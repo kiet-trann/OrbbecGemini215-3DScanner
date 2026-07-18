@@ -36,6 +36,20 @@ def test_refresh_ignores_missing_root(tmp_path: Path) -> None:
     assert CroppedObjCatalog(tmp_path / "missing").refresh() == []
 
 
+def test_refresh_prefers_compatible_child_and_does_not_duplicate_the_raw_crop(tmp_path: Path) -> None:
+    raw = tmp_path / "cropped" / "model_cropped.obj"
+    viewer = tmp_path / "cropped" / "viewer" / "model_cropped.glb"
+    raw.parent.mkdir(parents=True)
+    viewer.parent.mkdir(parents=True)
+    raw.write_text("raw", encoding="utf-8")
+    viewer.write_text("viewer", encoding="utf-8")
+
+    outputs = CroppedObjCatalog(tmp_path).refresh()
+
+    assert [output.path for output in outputs] == [viewer.resolve()]
+    assert outputs[0].output_dir == viewer.parent.resolve()
+
+
 def test_refresh_includes_crops_from_sibling_roots_with_session_catalogs(tmp_path: Path) -> None:
     outputs = tmp_path / "outputs"
     current_root = outputs / "scanner_3d"

@@ -15,6 +15,7 @@ add_src_to_path()
 
 from scanner_app.rtabmap.activity import AutoPauseState
 from scanner_app.rtabmap.models import RuntimeStatus, SavedSession
+from scanner_app.rtabmap.obj_crop import CropResult
 from scanner_app.rtabmap.windows_bridge import BridgeResult
 from scanner_app.camera.models import CameraProfile, CameraSettingsSnapshot, CaptureConfig
 from scanner_app.visualization.crop_catalog import CroppedObjOutput
@@ -208,8 +209,8 @@ def test_crop_preview_separates_3d_navigation_from_rectangle_selection() -> None
 
 def test_selected_crop_path_returns_selected_catalog_output(tmp_path: Path) -> None:
     output = CroppedObjOutput(
-        tmp_path / "crop" / "model_cropped.obj",
-        tmp_path / "crop",
+        tmp_path / "crop" / "viewer" / "model_cropped.glb",
+        tmp_path / "crop" / "viewer",
         12,
         datetime.now(timezone.utc),
     )
@@ -217,6 +218,31 @@ def test_selected_crop_path_returns_selected_catalog_output(tmp_path: Path) -> N
     assert selected_crop_path([output], ("0",)) == output.path
     assert selected_crop_path([output], ()) is None
     assert selected_crop_path([output], ("5",)) is None
+
+
+def test_record_crop_result_selects_compatible_obj(tmp_path: Path) -> None:
+    selected: list[Path] = []
+
+    class Status:
+        def __init__(self) -> None:
+            self.value = ""
+
+        def set(self, value: str) -> None:
+            self.value = value
+
+    window = object.__new__(Scanner3DWindow)
+    window.refresh_crop_outputs = lambda select_path: selected.append(select_path)
+    window.status = Status()
+    result = CropResult(
+        tmp_path / "crop",
+        tmp_path / "crop" / "model_cropped.obj",
+        tmp_path / "crop" / "viewer" / "model_cropped.glb",
+    )
+
+    window._record_crop_result(result)
+
+    assert selected == [result.viewer_model]
+    assert window.status.value == f"Cropped model: {result.viewer_model}"
 
 
 def test_crop_preview_uses_less_detail_while_rotating() -> None:

@@ -6,6 +6,8 @@ import shutil
 
 import numpy as np
 
+from scanner_app.rtabmap.glb_bundle import create_3d_viewer_glb
+
 
 @dataclass(frozen=True)
 class CropRectangle:
@@ -38,6 +40,7 @@ class CameraProjection:
 class CropResult:
     output_dir: Path
     obj: Path
+    viewer_model: Path
 
 
 def preview_stride(item_count: int, maximum_items: int) -> int:
@@ -144,14 +147,23 @@ def crop_obj_bundle(source_obj: Path, rectangle: CropRectangle, projection: Came
         raise ValueError("Crop selected no faces; enlarge or reposition the rectangle")
     temporary = output_dir.with_name(output_dir.name + ".tmp")
     temporary.mkdir(parents=True)
-    obj = temporary / f"{source_obj.stem}_cropped.obj"
-    obj.write_text("\n".join(kept) + "\n", encoding="utf-8")
-    for material in source_obj.parent.glob("*.mtl"):
-        shutil.copy2(material, temporary / material.name)
-        for line in material.read_text(encoding="utf-8", errors="replace").splitlines():
-            if line.lower().startswith("map_kd "):
-                texture = source_obj.parent / line.split(maxsplit=1)[1]
-                if texture.is_file():
-                    shutil.copy2(texture, temporary / texture.name)
-    temporary.replace(output_dir)
-    return CropResult(output_dir=output_dir, obj=output_dir / obj.name)
+    try:
+        obj = temporary / f"{source_obj.stem}_cropped.obj"
+        obj.write_text("\n".join(kept) + "\n", encoding="utf-8")
+        for material in source_obj.parent.glob("*.mtl"):
+            shutil.copy2(material, temporary / material.name)
+            for line in material.read_text(encoding="utf-8", errors="replace").splitlines():
+                if line.lower().startswith("map_kd "):
+                    texture = source_obj.parent / line.split(maxsplit=1)[1]
+                    if texture.is_file():
+                        shutil.copy2(texture, temporary / texture.name)
+        viewer_model = create_3d_viewer_glb(obj, temporary / "viewer" / f"{obj.stem}.glb")
+        temporary.replace(output_dir)
+    except BaseException:
+        shutil.rmtree(temporary, ignore_errors=True)
+        raise
+    return CropResult(
+        output_dir=output_dir,
+        obj=output_dir / obj.name,
+        viewer_model=output_dir / "viewer" / viewer_model.name,
+    )
