@@ -1,3 +1,5 @@
+import ctypes
+
 import pytest
 
 try:
@@ -7,7 +9,7 @@ except ImportError:
 
 add_src_to_path()
 
-from scanner_app.rtabmap.windows_bridge import BridgeResult, WindowsRtabmapBridge
+from scanner_app.rtabmap.windows_bridge import _INPUT, BridgeResult, WindowsRtabmapBridge
 
 
 def test_pause_refuses_to_send_when_no_matching_window() -> None:
@@ -53,3 +55,9 @@ def test_pause_reports_windows_input_failure_without_raising() -> None:
     )
 
     assert bridge.pause() == BridgeResult(False, "Pause failed: access denied")
+
+
+def test_send_input_packet_matches_the_native_input_structure_size() -> None:
+    expected_size = 40 if ctypes.sizeof(ctypes.c_void_p) == 8 else 28
+
+    assert ctypes.sizeof(_INPUT) == expected_size
