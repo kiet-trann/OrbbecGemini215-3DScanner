@@ -1,6 +1,7 @@
 import math
 from pathlib import Path
 
+import cv2
 import numpy as np
 import pytest
 
@@ -23,9 +24,10 @@ from scanner_app.rtabmap.obj_crop import (
 )
 
 
-def write_bundle(directory: Path) -> Path:
+def write_bundle(directory: Path, texture_size: tuple[int, int] = (64, 64)) -> Path:
     directory.mkdir()
-    (directory / "texture.jpg").write_bytes(b"texture")
+    width, height = texture_size
+    assert cv2.imwrite(str(directory / "texture.jpg"), np.zeros((height, width, 3), dtype=np.uint8))
     (directory / "mesh.mtl").write_text("newmtl material\nmap_Kd texture.jpg\n", encoding="utf-8")
     obj = directory / "mesh.obj"
     obj.write_text(
@@ -47,7 +49,24 @@ def test_crop_preserves_textures_and_only_keeps_faces_inside_screen_rectangle(tm
     assert result.obj.name == "mesh_cropped.obj"
     assert result.obj.read_text(encoding="utf-8").count("\nf ") == 1
     assert (result.output_dir / "mesh.mtl").is_file()
-    assert (result.output_dir / "texture.jpg").read_bytes() == b"texture"
+    assert (result.output_dir / "texture.jpg").is_file()
+
+
+def test_crop_creates_compatible_child_without_changing_raw_crop_texture(tmp_path: Path) -> None:
+    source = write_bundle(tmp_path / "raw", texture_size=(4097, 2049))
+
+    result = crop_obj_bundle(
+        source,
+        CropRectangle(0, 0, 800, 600),
+        CameraProjection(np.eye(4), viewport_width=800, viewport_height=600),
+        tmp_path / "cropped",
+    )
+
+    raw_image = cv2.imread(str(result.output_dir / "texture.jpg"), cv2.IMREAD_UNCHANGED)
+    viewer_image = cv2.imread(str(result.viewer_obj.parent / "texture_viewer.jpg"), cv2.IMREAD_UNCHANGED)
+    assert raw_image is not None and raw_image.shape[:2] == (2049, 4097)
+    assert viewer_image is not None and viewer_image.shape[:2] == (2048, 4096)
+    assert result.viewer_obj.is_file()
 
 
 def test_crop_rejects_an_empty_selection_without_creating_output(tmp_path: Path) -> None:

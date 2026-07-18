@@ -2,6 +2,9 @@ from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 
+import cv2
+import numpy as np
+
 try:
     from test_support import add_src_to_path
 except ImportError:
@@ -32,7 +35,7 @@ class FakeRunner:
         (output_dir / f"{output_stem}.obj").write_text("mtllib mesh.mtl\nv 0 0 0\n", encoding="utf-8")
         (output_dir / "mesh.mtl").write_text("newmtl material\nmap_Kd texture.jpg\n", encoding="utf-8")
         if self.write_texture:
-            (output_dir / "texture.jpg").write_bytes(b"texture")
+            assert cv2.imwrite(str(output_dir / "texture.jpg"), np.zeros((64, 64, 3), dtype=np.uint8))
         return FakeCompletedProcess(1, "export complete", "PCL warning after output")
 
 
@@ -55,6 +58,8 @@ def test_export_accepts_complete_textured_bundle_even_with_post_export_nonzero_e
     assert result.obj is not None and result.obj.is_file()
     assert result.mtl is not None and result.mtl.is_file()
     assert [path.name for path in result.textures] == ["texture.jpg"]
+    assert result.viewer_obj is not None and result.viewer_obj.is_file()
+    assert "map_Kd texture_viewer.jpg" in (result.viewer_obj.parent / "mesh.mtl").read_text(encoding="utf-8")
     assert result.log.is_file()
     assert database.read_bytes() == original
 

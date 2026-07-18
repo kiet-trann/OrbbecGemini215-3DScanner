@@ -2,10 +2,12 @@
 
 import argparse
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime
 from pathlib import Path
 import subprocess
+
+from scanner_app.rtabmap.viewer_bundle import create_3d_viewer_bundle
 
 
 @dataclass(frozen=True)
@@ -20,6 +22,7 @@ class ExportResult:
     obj: Path | None
     mtl: Path | None
     textures: tuple[Path, ...]
+    viewer_obj: Path | None
     log: Path
     error: str | None
 
@@ -63,20 +66,27 @@ class ExportService:
             (completed.stdout or "") + (completed.stderr or ""),
             encoding="utf-8",
         )
-        return self._validate(output_dir, log_path, completed.returncode)
+        result = self._validate(output_dir, log_path, completed.returncode)
+        if result.error is not None or result.obj is None:
+            return result
+        try:
+            viewer = create_3d_viewer_bundle(result.obj, output_dir.parent / "viewer")
+        except (OSError, ValueError) as error:
+            return replace(result, error=f"3D Viewer bundle failed: {error}")
+        return replace(result, viewer_obj=viewer.obj)
 
     @staticmethod
     def _validate(output_dir: Path, log_path: Path, returncode: int) -> ExportResult:
         obj = next(iter(sorted(output_dir.glob("*.obj"))), None)
         mtl = next(iter(sorted(output_dir.glob("*.mtl"))), None)
         if obj is None:
-            return ExportResult(output_dir, None, mtl, (), log_path, f"Export did not produce an OBJ (exit {returncode})")
+            return ExportResult(output_dir, None, mtl, (), None, log_path, f"Export did not produce an OBJ (exit {returncode})")
         if mtl is None:
-            return ExportResult(output_dir, obj, None, (), log_path, "Export did not produce an MTL file")
+            return ExportResult(output_dir, obj, None, (), None, log_path, "Export did not produce an MTL file")
         textures = tuple(_referenced_textures(mtl))
         if not textures:
-            return ExportResult(output_dir, obj, mtl, (), log_path, "Export did not produce a texture image")
-        return ExportResult(output_dir, obj, mtl, textures, log_path, None)
+            return ExportResult(output_dir, obj, mtl, (), None, log_path, "Export did not produce a texture image")
+        return ExportResult(output_dir, obj, mtl, textures, None, log_path, None)
 
 
 def _referenced_textures(mtl: Path) -> list[Path]:
