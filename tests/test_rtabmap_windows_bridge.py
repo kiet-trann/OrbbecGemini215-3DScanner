@@ -41,3 +41,15 @@ def test_pause_sends_space_once_to_single_rtabmap_window() -> None:
 
     assert bridge.pause() == BridgeResult(True, "Pause sent")
     assert sent == [42]
+
+
+def test_pause_reports_windows_input_failure_without_raising() -> None:
+    def reject_input(_hwnd: int) -> None:
+        raise OSError("access denied")
+
+    bridge = WindowsRtabmapBridge(
+        find_windows=lambda: [(42, "RTAB-Map")],
+        send_space=reject_input,
+    )
+
+    assert bridge.pause() == BridgeResult(False, "Pause failed: access denied")

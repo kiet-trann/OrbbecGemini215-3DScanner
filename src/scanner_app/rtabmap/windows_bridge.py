@@ -44,7 +44,10 @@ class WindowsRtabmapBridge:
             return BridgeResult(False, "RTAB-Map window was not found")
         if len(matches) != 1:
             return BridgeResult(False, "RTAB-Map window is ambiguous")
-        self._send_space(matches[0])
+        try:
+            self._send_space(matches[0])
+        except OSError as error:
+            return BridgeResult(False, f"{action} failed: {error}")
         return BridgeResult(True, f"{action} sent")
 
 
