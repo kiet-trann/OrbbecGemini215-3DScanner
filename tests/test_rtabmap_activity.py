@@ -44,6 +44,19 @@ def test_monitor_becomes_uncertain_without_sending_pause_when_probe_is_invalid()
     assert monitor.observe(ActivityObservation(None, 1.0, "database is locked")) is AutoPauseState.UNCERTAIN
 
 
+def test_monitor_becomes_uncertain_when_pause_command_is_not_sent() -> None:
+    monitor = ActivityMonitor(
+        pause=lambda: BridgeResult(False, "Pause failed: access denied"),
+        inactivity_seconds=3.0,
+        countdown_seconds=1.0,
+    )
+
+    monitor.observe(ActivityObservation(1, 0.0, None))
+    monitor.observe(ActivityObservation(2, 1.0, None))
+    assert monitor.observe(ActivityObservation(2, 4.0, None)) is AutoPauseState.COUNTDOWN
+    assert monitor.observe(ActivityObservation(2, 5.0, None)) is AutoPauseState.UNCERTAIN
+
+
 def test_sqlite_probe_reads_rtabmap_node_count_read_only(tmp_path: Path) -> None:
     database = tmp_path / "rtabmap.tmp.db"
     connection = sqlite3.connect(database)
