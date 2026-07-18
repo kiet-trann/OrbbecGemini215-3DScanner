@@ -162,7 +162,8 @@ def _build_vertices(
                 index = len(output_positions)
                 lookup[corner] = index
                 output_positions.append(positions[corner.position])
-                output_texcoords.append(texcoords[corner.texcoord])
+                u, v = texcoords[corner.texcoord]
+                output_texcoords.append((u, 1.0 - v))
                 output_normals.append(normals[corner.normal])
             indices.append(index)
     return {

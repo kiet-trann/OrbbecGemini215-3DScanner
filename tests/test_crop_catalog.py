@@ -38,7 +38,7 @@ def test_refresh_ignores_missing_root(tmp_path: Path) -> None:
 
 def test_refresh_prefers_compatible_child_and_does_not_duplicate_the_raw_crop(tmp_path: Path) -> None:
     raw = tmp_path / "cropped" / "model_cropped.obj"
-    viewer = tmp_path / "cropped" / "viewer" / "model_cropped.obj"
+    viewer = tmp_path / "cropped" / "viewer" / "model_cropped.glb"
     raw.parent.mkdir(parents=True)
     viewer.parent.mkdir(parents=True)
     raw.write_text("raw", encoding="utf-8")
