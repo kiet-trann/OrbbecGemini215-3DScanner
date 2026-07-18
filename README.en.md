@@ -119,6 +119,12 @@ The raw OBJ contains all session geometry. It can include the object, table,
 floor, or several objects. It remains unchanged so that you can crop it again
 as many times as needed.
 
+After every export or crop, the app also creates a `viewer` bundle for Windows
+3D Viewer. Its texture's longest edge is capped at 4096 px for more reliable
+loading, while the original raw OBJ, MTL, and full-resolution texture remain
+unchanged. In 3D Viewer, open only the `.obj` inside the `viewer` folder and
+keep its companion `.mtl` and `.jpg` files beside it.
+
 ## Crop an OBJ
 
 1. Select **Crop raw OBJ** and choose the exported raw OBJ.
