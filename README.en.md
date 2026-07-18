@@ -119,6 +119,12 @@ The raw OBJ contains all session geometry. It can include the object, table,
 floor, or several objects. It remains unchanged so that you can crop it again
 as many times as needed.
 
+After every export or crop, the app also creates a `viewer` GLB for Windows
+3D Viewer. The GLB embeds the mesh, UV coordinates, material, and a JPEG whose
+longest edge is capped at 4096 px for reliable colour loading. The original raw
+OBJ, MTL, and full-resolution texture remain unchanged for later processing.
+In 3D Viewer, open the single `.glb` file inside the `viewer` folder.
+
 ## Crop an OBJ
 
 1. Select **Crop raw OBJ** and choose the exported raw OBJ.

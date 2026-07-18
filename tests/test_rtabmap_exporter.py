@@ -2,6 +2,9 @@ from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 
+import cv2
+import numpy as np
+
 try:
     from test_support import add_src_to_path
 except ImportError:
@@ -29,10 +32,17 @@ class FakeRunner:
         output_dir = Path(args[args.index("--output_dir") + 1])
         output_stem = args[args.index("--output") + 1]
         output_dir.mkdir(parents=True, exist_ok=True)
-        (output_dir / f"{output_stem}.obj").write_text("mtllib mesh.mtl\nv 0 0 0\n", encoding="utf-8")
+        (output_dir / f"{output_stem}.obj").write_text(
+            "\n".join((
+                "mtllib mesh.mtl", "v 0 0 0", "v 1 0 0", "v 0 1 0",
+                "vt 0 0", "vt 1 0", "vt 0 1", "vn 0 0 1", "usemtl material",
+                "f 1/1/1 2/2/1 3/3/1", "",
+            )),
+            encoding="utf-8",
+        )
         (output_dir / "mesh.mtl").write_text("newmtl material\nmap_Kd texture.jpg\n", encoding="utf-8")
         if self.write_texture:
-            (output_dir / "texture.jpg").write_bytes(b"texture")
+            assert cv2.imwrite(str(output_dir / "texture.jpg"), np.zeros((64, 64, 3), dtype=np.uint8))
         return FakeCompletedProcess(1, "export complete", "PCL warning after output")
 
 
@@ -55,6 +65,9 @@ def test_export_accepts_complete_textured_bundle_even_with_post_export_nonzero_e
     assert result.obj is not None and result.obj.is_file()
     assert result.mtl is not None and result.mtl.is_file()
     assert [path.name for path in result.textures] == ["texture.jpg"]
+    assert result.viewer_model is not None and result.viewer_model.is_file()
+    assert result.viewer_model.suffix == ".glb"
+    assert result.viewer_model.read_bytes()[:4] == b"glTF"
     assert result.log.is_file()
     assert database.read_bytes() == original
 
