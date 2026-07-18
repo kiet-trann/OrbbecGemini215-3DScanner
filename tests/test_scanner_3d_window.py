@@ -16,6 +16,7 @@ add_src_to_path()
 from scanner_app.rtabmap.activity import AutoPauseState
 from scanner_app.rtabmap.models import RuntimeStatus, SavedSession
 from scanner_app.rtabmap.obj_crop import CropResult
+from scanner_app.rtabmap.exporter import ExportResult
 from scanner_app.rtabmap.windows_bridge import BridgeResult
 from scanner_app.camera.models import CameraProfile, CameraSettingsSnapshot, CaptureConfig
 from scanner_app.visualization.crop_catalog import CroppedObjOutput
@@ -243,6 +244,57 @@ def test_record_crop_result_selects_compatible_obj(tmp_path: Path) -> None:
 
     assert selected == [result.viewer_model]
     assert window.status.value == f"Cropped model: {result.viewer_model}"
+
+
+def test_record_export_result_enables_opening_the_viewer_model(tmp_path: Path) -> None:
+    configured: list[str] = []
+
+    class Status:
+        def __init__(self) -> None:
+            self.value = ""
+
+        def set(self, value: str) -> None:
+            self.value = value
+
+    class Button:
+        def configure(self, *, state: str) -> None:
+            configured.append(state)
+
+    viewer_model = tmp_path / "viewer" / "scan.glb"
+    result = ExportResult(tmp_path, tmp_path / "raw.obj", tmp_path / "raw.mtl", (), viewer_model, tmp_path / "log", None)
+    window = object.__new__(Scanner3DWindow)
+    window.status = Status()
+    window.open_exported_button = Button()
+    window.latest_export_model = None
+
+    window._record_export_result(result)
+
+    assert window.latest_export_model == viewer_model
+    assert configured == [tk.NORMAL]
+    assert window.status.value == f"Exported for 3D Viewer: {viewer_model}"
+
+
+def test_open_latest_exported_model_uses_the_recent_viewer_model(tmp_path: Path) -> None:
+    opened: list[Path] = []
+
+    class Status:
+        def set(self, _value: str) -> None:
+            pass
+
+    class OpenActions:
+        def open_obj(self, path: Path) -> BridgeResult:
+            opened.append(path)
+            return BridgeResult(True, "Opened")
+
+    viewer_model = tmp_path / "viewer" / "scan.glb"
+    window = object.__new__(Scanner3DWindow)
+    window.latest_export_model = viewer_model
+    window.open_actions = OpenActions()
+    window.status = Status()
+
+    window.open_latest_exported_model()
+
+    assert opened == [viewer_model]
 
 
 def test_crop_preview_uses_less_detail_while_rotating() -> None:
