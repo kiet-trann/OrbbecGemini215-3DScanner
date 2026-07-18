@@ -407,7 +407,7 @@ class Scanner3DWindow:
 
     def _export_worker(self, session: SavedSession) -> None:
         result = self.exporter.export(ExportRequest(session.path, self.output_root))
-        message = result.error or f"Exported: {result.obj}"
+        message = result.error or f"Exported for 3D Viewer: {result.viewer_obj or result.obj}"
         self.root.after(0, lambda: self.status.set(message))
 
     def choose_crop_source(self) -> None:
@@ -576,8 +576,8 @@ class Scanner3DWindow:
         self.root.after(0, lambda: self._record_crop_result(result))
 
     def _record_crop_result(self, result: CropResult) -> None:
-        self.refresh_crop_outputs(select_path=result.obj)
-        self.status.set(f"Cropped OBJ: {result.obj}")
+        self.refresh_crop_outputs(select_path=result.viewer_obj)
+        self.status.set(f"Cropped OBJ: {result.viewer_obj}")
 
     def open_latest_cropped_obj(self) -> None:
         path = selected_crop_path(self.cropped_outputs, self.crop_tree.selection())
