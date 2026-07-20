@@ -24,6 +24,7 @@ from scanner_app.rtabmap.windows_bridge import BridgeResult, WindowsRtabmapBridg
 from scanner_app.camera.models import CameraProfile, CameraSettingsSnapshot, CaptureConfig
 from scanner_app.camera.preflight import CameraPreflight, CameraPreflightError
 from scanner_app.visualization.crop_catalog import CroppedObjCatalog, CroppedObjOutput
+from scanner_app.visualization.guided_workflow import GuidedMode, GuidedWorkflow, guided_workflow
 from scanner_app.visualization.navigation import (
     DashboardPage,
     default_page,
@@ -198,8 +199,8 @@ class Scanner3DWindow:
         self.root, self.controller, self.monitor, self.probe = root, controller, monitor, probe
         self.catalog, self.exporter, self.output_root = catalog, exporter, output_root
         self.auto_enabled = tk.BooleanVar(value=False)
-        self.status = tk.StringVar(value="Ready")
-        self.auto_status = tk.StringVar(value="Auto-pause is off")
+        self.status = tk.StringVar(value="Sẵn sàng")
+        self.auto_status = tk.StringVar(value="Tự dừng đang tắt")
         self.camera_profile_value = tk.StringVar(value=CameraProfile.NEAR.display_name)
         self.sessions: list[SavedSession] = []
         self.crop_catalog = CroppedObjCatalog(output_root)
@@ -209,11 +210,7 @@ class Scanner3DWindow:
         self.active_page = default_page()
         self.page_frames: dict[DashboardPage, ttk.Frame] = {}
         self.sidebar_buttons: dict[DashboardPage, ttk.Button] = {}
-        self.dashboard_camera_value = tk.StringVar(value="Unavailable")
-        self.dashboard_runtime_value = tk.StringVar(value="RTAB-Map is not running")
-        self.dashboard_export_value = tk.StringVar(value="No exported model")
-        self.dashboard_session_value = tk.StringVar(value="0 saved sessions")
-        root.title("3D Scanner")
+        root.title("Máy quét 3D")
         root.geometry("1080x780")
         root.minsize(860, 640)
         self._build()
@@ -230,18 +227,17 @@ class Scanner3DWindow:
         sidebar.grid(row=0, column=0, sticky="ns")
         content = ttk.Frame(shell)
         content.grid(row=0, column=1, sticky="nsew")
-        ttk.Label(content, text="3D Scanner", style="Dashboard.Title.TLabel").pack(anchor=tk.W)
+        ttk.Label(content, text="Máy quét 3D", style="Dashboard.Title.TLabel").pack(anchor=tk.W)
         ttk.Label(content, textvariable=self.status).pack(anchor=tk.W, pady=(2, 10))
         self.page_host = ttk.Frame(content)
         self.page_host.pack(fill=tk.BOTH, expand=True)
         self.page_host.columnconfigure(0, weight=1)
         self.page_host.rowconfigure(0, weight=1)
         self._build_sidebar(sidebar)
-        self._build_overview_page(self._new_page_frame(DashboardPage.OVERVIEW))
+        self._build_new_scan_page(self._new_page_frame(DashboardPage.NEW_SCAN))
         self._build_camera_page(self._new_page_frame(DashboardPage.CAMERA))
-        self._build_scan_page(self._new_page_frame(DashboardPage.SCAN))
-        self._build_sessions_page(self._new_page_frame(DashboardPage.SESSIONS))
-        self._build_outputs_page(self._new_page_frame(DashboardPage.OUTPUTS))
+        self._build_results_page(self._new_page_frame(DashboardPage.RESULTS))
+        self._build_advanced_page(self._new_page_frame(DashboardPage.ADVANCED))
         self.show_page(self.active_page)
 
     def _configure_styles(self) -> None:
@@ -250,9 +246,10 @@ class Scanner3DWindow:
         style.configure("Sidebar.TButton", anchor=tk.W, padding=(12, 8))
         style.configure("Sidebar.Active.TButton", anchor=tk.W, padding=(12, 8), font=("Segoe UI", 10, "bold"))
         style.configure("Dashboard.Title.TLabel", font=("Segoe UI", 18, "bold"))
+        style.configure("Guided.Primary.TButton", padding=(14, 9), font=("Segoe UI", 10, "bold"))
 
     def _build_sidebar(self, parent: ttk.Frame) -> None:
-        ttk.Label(parent, text="3D Scanner", foreground="white", background="#173f5f",
+        ttk.Label(parent, text="Máy quét 3D", foreground="white", background="#173f5f",
                   font=("Segoe UI", 14, "bold")).pack(anchor=tk.W, padx=8, pady=(4, 16))
         group: str | None = None
         for item in navigation_items():
@@ -288,31 +285,34 @@ class Scanner3DWindow:
             self.sidebar_buttons[page].configure(style="Sidebar.Active.TButton")
         self.active_page = page
 
-    def _build_overview_page(self, parent: ttk.Frame) -> None:
-        ttk.Label(parent, text="Scanner overview", font=("Segoe UI", 16, "bold")).pack(anchor=tk.W)
-        ttk.Label(parent, text="Open any workspace area without following a fixed sequence.").pack(anchor=tk.W, pady=(2, 12))
-        cards = ttk.Frame(parent)
-        cards.pack(fill=tk.X)
-        for title, value, page in (
-            ("Camera", self.dashboard_camera_value, DashboardPage.CAMERA),
-            ("Scan", self.dashboard_runtime_value, DashboardPage.SCAN),
-            ("Saved sessions", self.dashboard_session_value, DashboardPage.SESSIONS),
-            ("Latest export", self.dashboard_export_value, DashboardPage.OUTPUTS),
-        ):
-            card = ttk.LabelFrame(cards, text=title, padding=10)
-            card.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(0, 8))
-            ttk.Label(card, textvariable=value, wraplength=180).pack(anchor=tk.W)
-            ttk.Button(card, text=f"Open {title.lower()}", command=lambda current=page: self.show_page(current)).pack(
-                anchor=tk.W, pady=(10, 0)
-            )
+    def _build_new_scan_page(self, parent: ttk.Frame) -> None:
+        ttk.Label(parent, text="Quét mới", font=("Segoe UI", 16, "bold")).pack(anchor=tk.W)
+        ttk.Label(parent, text="Thực hiện lần lượt các bước dưới đây để tạo mô hình 3D.").pack(
+            anchor=tk.W, pady=(2, 12)
+        )
+        workflow = ttk.LabelFrame(parent, text="Trạng thái quét", padding=12)
+        workflow.pack(fill=tk.X)
+        self.new_scan_heading = tk.StringVar(value="Bước 1 / 3 · Chuẩn bị camera")
+        self.new_scan_detail = tk.StringVar(value="Kiểm tra camera trước khi bắt đầu.")
+        ttk.Label(workflow, textvariable=self.new_scan_heading, font=("Segoe UI", 12, "bold")).pack(anchor=tk.W)
+        ttk.Label(workflow, textvariable=self.new_scan_detail, wraplength=650).pack(anchor=tk.W, pady=(4, 10))
+        self.new_scan_primary_button = ttk.Button(workflow, style="Guided.Primary.TButton")
+        self.new_scan_primary_button.pack(anchor=tk.W)
+        self.new_scan_results_button = ttk.Button(
+            workflow, command=lambda: self.show_page(DashboardPage.RESULTS)
+        )
+        self.new_scan_results_button.pack(anchor=tk.W, pady=(8, 0))
+        ttk.Button(parent, text="Mở cài đặt camera", command=lambda: self.show_page(DashboardPage.CAMERA)).pack(
+            anchor=tk.W, pady=(12, 0)
+        )
 
     def _build_camera_page(self, parent: ttk.Frame) -> None:
-        ttk.Label(parent, text="Camera setup", font=("Segoe UI", 16, "bold")).pack(anchor=tk.W)
-        camera_setup = ttk.LabelFrame(parent, text="Camera setup (before scan)", padding=8)
+        ttk.Label(parent, text="Thiết lập camera", font=("Segoe UI", 16, "bold")).pack(anchor=tk.W)
+        camera_setup = ttk.LabelFrame(parent, text="Cấu hình quét", padding=8)
         camera_setup.pack(fill=tk.X, pady=(8, 10))
         profile_controls = ttk.Frame(camera_setup)
         profile_controls.pack(fill=tk.X)
-        ttk.Label(profile_controls, text="Scan profile:").pack(side=tk.LEFT)
+        ttk.Label(profile_controls, text="Cấu hình:").pack(side=tk.LEFT)
         self.camera_profile_combo = ttk.Combobox(
             profile_controls,
             textvariable=self.camera_profile_value,
@@ -323,58 +323,59 @@ class Scanner3DWindow:
         self.camera_profile_combo.pack(side=tk.LEFT, padx=(6, 8))
         self.camera_profile_combo.bind("<<ComboboxSelected>>", self._select_camera_profile)
         self.inspect_camera_button = ttk.Button(
-            profile_controls, text="Refresh camera settings", command=self.inspect_camera
+            profile_controls, text="Kiểm tra thiết bị", command=self.inspect_camera
         )
         self.inspect_camera_button.pack(side=tk.LEFT, padx=(0, 6))
         self.apply_camera_button = ttk.Button(
-            profile_controls, text="Apply & Open RTAB-Map", command=self.launch
+            profile_controls, text="Áp dụng & mở RTAB-Map", command=self.launch
         )
         self.apply_camera_button.pack(side=tk.LEFT)
         self.camera_settings_tree = ttk.Treeview(
             camera_setup, columns=("value",), show="tree headings", height=8
         )
-        self.camera_settings_tree.heading("#0", text="Setting")
-        self.camera_settings_tree.heading("value", text="Current value")
+        self.camera_settings_tree.heading("#0", text="Thông số")
+        self.camera_settings_tree.heading("value", text="Giá trị hiện tại")
         self.camera_settings_tree.column("#0", width=190)
         self.camera_settings_tree.column("value", width=510)
         self.camera_settings_tree.pack(fill=tk.X, pady=(8, 0))
 
-    def _build_scan_page(self, parent: ttk.Frame) -> None:
-        ttk.Label(parent, text="Scan controls", font=("Segoe UI", 16, "bold")).pack(anchor=tk.W)
+    def _build_advanced_page(self, parent: ttk.Frame) -> None:
+        ttk.Label(parent, text="Công cụ nâng cao", font=("Segoe UI", 16, "bold")).pack(anchor=tk.W)
+        ttk.Label(parent, text="Các điều khiển kỹ thuật dành cho lúc bạn cần can thiệp vào phiên quét.").pack(
+            anchor=tk.W, pady=(2, 12)
+        )
         controls = ttk.Frame(parent)
         controls.pack(fill=tk.X)
-        ttk.Button(controls, text="Pause", command=lambda: self._bridge_action(self.controller.request_pause)).pack(side=tk.LEFT, padx=6)
-        ttk.Button(controls, text="Resume", command=lambda: self._bridge_action(self.controller.request_resume)).pack(side=tk.LEFT, padx=6)
-        ttk.Checkbutton(controls, text="Auto-pause (experimental)", variable=self.auto_enabled,
+        ttk.Button(controls, text="Tạm dừng", command=lambda: self._bridge_action(self.controller.request_pause)).pack(side=tk.LEFT, padx=6)
+        ttk.Button(controls, text="Tiếp tục", command=lambda: self._bridge_action(self.controller.request_resume)).pack(side=tk.LEFT, padx=6)
+        ttk.Checkbutton(controls, text="Tự dừng (thử nghiệm)", variable=self.auto_enabled,
                         command=self._toggle_auto_pause).pack(side=tk.RIGHT)
         ttk.Label(parent, textvariable=self.auto_status).pack(anchor=tk.W, pady=(10, 6))
 
-    def _build_sessions_page(self, parent: ttk.Frame) -> None:
-        ttk.Label(parent, text="Saved RTAB-Map sessions", font=("Segoe UI", 16, "bold")).pack(anchor=tk.W)
-        sessions = ttk.LabelFrame(parent, text="Saved RTAB-Map sessions", padding=8)
-        sessions.pack(fill=tk.BOTH, expand=True)
+    def _build_results_page(self, parent: ttk.Frame) -> None:
+        ttk.Label(parent, text="Phiên & kết quả", font=("Segoe UI", 16, "bold")).pack(anchor=tk.W)
+        sessions = ttk.LabelFrame(parent, text="Phiên quét đã lưu", padding=8)
+        sessions.pack(fill=tk.BOTH, expand=True, pady=(8, 10))
         self.tree = ttk.Treeview(sessions, columns=("size", "modified"), show="tree headings", height=6)
-        self.tree.heading("#0", text="Database")
-        self.tree.heading("size", text="Size")
-        self.tree.heading("modified", text="Modified (UTC)")
+        self.tree.heading("#0", text="Cơ sở dữ liệu")
+        self.tree.heading("size", text="Dung lượng")
+        self.tree.heading("modified", text="Cập nhật (UTC)")
         self.tree.column("#0", width=330)
         self.tree.column("size", width=100)
         self.tree.column("modified", width=180)
         self.tree.pack(fill=tk.BOTH, expand=True)
-        actions = ttk.Frame(parent)
+        actions = ttk.Frame(sessions)
         actions.pack(fill=tk.X, pady=(8, 0))
-        ttk.Button(actions, text="Refresh sessions", command=self.refresh).pack(side=tk.LEFT)
-        ttk.Button(actions, text="Export raw OBJ", command=self.export_selected).pack(side=tk.RIGHT)
+        ttk.Button(actions, text="Làm mới phiên", command=self.refresh).pack(side=tk.LEFT)
+        ttk.Button(actions, text="Xuất OBJ gốc", command=self.export_selected).pack(side=tk.RIGHT)
 
-    def _build_outputs_page(self, parent: ttk.Frame) -> None:
-        ttk.Label(parent, text="Export & crop", font=("Segoe UI", 16, "bold")).pack(anchor=tk.W)
-        crops = ttk.LabelFrame(parent, text="Cropped OBJ outputs", padding=8)
+        crops = ttk.LabelFrame(parent, text="Mô hình đã cắt", padding=8)
         crops.pack(fill=tk.BOTH, expand=True, pady=(8, 0))
         self.crop_tree = ttk.Treeview(crops, columns=("obj", "folder", "size", "modified"), show="headings", height=6)
         self.crop_tree.heading("obj", text="OBJ")
-        self.crop_tree.heading("folder", text="Output folder")
-        self.crop_tree.heading("size", text="Size")
-        self.crop_tree.heading("modified", text="Modified (UTC)")
+        self.crop_tree.heading("folder", text="Thư mục đầu ra")
+        self.crop_tree.heading("size", text="Dung lượng")
+        self.crop_tree.heading("modified", text="Cập nhật (UTC)")
         self.crop_tree.column("obj", width=230)
         self.crop_tree.column("folder", width=190)
         self.crop_tree.column("size", width=90)
@@ -384,18 +385,18 @@ class Scanner3DWindow:
         actions = ttk.Frame(parent)
         actions.pack(fill=tk.X, pady=(8, 0))
         self.open_folder_button = ttk.Button(
-            actions, text="Open output folder", command=self.open_latest_output_folder, state=tk.DISABLED
+            actions, text="Mở thư mục đầu ra", command=self.open_latest_output_folder, state=tk.DISABLED
         )
         self.open_folder_button.pack(side=tk.RIGHT, padx=(0, 8))
         self.open_obj_button = ttk.Button(
-            actions, text="Open cropped model", command=self.open_latest_cropped_obj, state=tk.DISABLED
+            actions, text="Mở mô hình đã cắt", command=self.open_latest_cropped_obj, state=tk.DISABLED
         )
         self.open_obj_button.pack(side=tk.RIGHT, padx=(0, 8))
         self.open_exported_button = ttk.Button(
-            actions, text="Open exported model", command=self.open_latest_exported_model, state=tk.DISABLED
+            actions, text="Mở mô hình đã xuất", command=self.open_latest_exported_model, state=tk.DISABLED
         )
         self.open_exported_button.pack(side=tk.RIGHT, padx=(0, 8))
-        ttk.Button(actions, text="Crop raw OBJ", command=self.choose_crop_source).pack(side=tk.RIGHT, padx=(0, 8))
+        ttk.Button(actions, text="Cắt OBJ gốc", command=self.choose_crop_source).pack(side=tk.RIGHT, padx=(0, 8))
 
     def launch(self) -> None:
         try:
@@ -439,17 +440,32 @@ class Scanner3DWindow:
             self.tree.insert("", tk.END, iid=str(index), text=session.path.name,
                              values=(f"{session.size_bytes / 1024 / 1024:.1f} MB", session.modified_at.isoformat()))
         self.refresh_crop_outputs()
-        self._refresh_dashboard_summary(dashboard)
+        self._refresh_new_scan(dashboard)
 
-    def _refresh_dashboard_summary(self, dashboard: DashboardState) -> None:
-        self.dashboard_runtime_value.set(dashboard.runtime_message)
-        self.dashboard_camera_value.set(dashboard.camera_profile.display_name)
-        count = len(self.sessions)
-        suffix = "session" if count == 1 else "sessions"
-        self.dashboard_session_value.set(f"{count} saved {suffix}")
-        self.dashboard_export_value.set(
-            self.latest_export_model.name if self.latest_export_model is not None else "No exported model"
-        )
+    def _refresh_new_scan(self, dashboard: DashboardState) -> None:
+        workflow = guided_workflow(dashboard, has_sessions=bool(self.sessions))
+        self._apply_guided_workflow(workflow, dashboard.runtime_message)
+
+    def _apply_guided_workflow(self, workflow: GuidedWorkflow, runtime_message: str) -> None:
+        if workflow.mode is GuidedMode.CHECK_CAMERA:
+            heading = "Bước 1 / 3 · Chuẩn bị camera"
+            detail = "Kiểm tra thiết bị và thông số camera trước khi bắt đầu quét."
+            self.new_scan_primary_button.configure(text=workflow.primary_label, command=self.inspect_camera)
+        elif workflow.mode is GuidedMode.START_SCAN:
+            heading = "Bước 2 / 3 · Bắt đầu quét"
+            detail = "Camera đã sẵn sàng. Áp dụng cấu hình để mở RTAB-Map và bắt đầu quét."
+            self.new_scan_primary_button.configure(text=workflow.primary_label, command=self.launch)
+        else:
+            heading = "Đang quét"
+            detail = f"{runtime_message}. Camera được khóa trong khi RTAB-Map đang chạy."
+            self.new_scan_primary_button.configure(
+                text=workflow.primary_label,
+                command=lambda: self._bridge_action(self.controller.request_pause),
+            )
+        self.new_scan_heading.set(heading)
+        self.new_scan_detail.set(detail)
+        results_text = "Mở phiên & kết quả" if workflow.results_ready else "Chưa có phiên để xuất"
+        self.new_scan_results_button.configure(text=results_text)
 
     def _refresh_camera_settings(self, dashboard: DashboardState) -> None:
         self.camera_profile_value.set(dashboard.camera_profile.display_name)
