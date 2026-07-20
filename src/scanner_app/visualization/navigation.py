@@ -5,11 +5,10 @@ from enum import Enum
 
 
 class DashboardPage(str, Enum):
-    OVERVIEW = "overview"
+    NEW_SCAN = "new_scan"
     CAMERA = "camera"
-    SCAN = "scan"
-    SESSIONS = "sessions"
-    OUTPUTS = "outputs"
+    RESULTS = "results"
+    ADVANCED = "advanced"
 
 
 @dataclass(frozen=True)
@@ -22,16 +21,15 @@ class NavigationItem:
 
 def navigation_items() -> tuple[NavigationItem, ...]:
     return (
-        NavigationItem(DashboardPage.OVERVIEW, "Overview", "Workspace"),
-        NavigationItem(DashboardPage.CAMERA, "Camera setup", "Workspace"),
-        NavigationItem(DashboardPage.SCAN, "Scan controls", "Workspace"),
-        NavigationItem(DashboardPage.SESSIONS, "Saved sessions", "Models"),
-        NavigationItem(DashboardPage.OUTPUTS, "Export & crop", "Models"),
+        NavigationItem(DashboardPage.NEW_SCAN, "Quét mới", "Làm việc"),
+        NavigationItem(DashboardPage.CAMERA, "Camera", "Làm việc"),
+        NavigationItem(DashboardPage.RESULTS, "Phiên & kết quả", "Làm việc"),
+        NavigationItem(DashboardPage.ADVANCED, "Công cụ nâng cao", "Làm việc"),
     )
 
 
 def default_page() -> DashboardPage:
-    return DashboardPage.OVERVIEW
+    return DashboardPage.NEW_SCAN
 
 
 def is_navigable(page: DashboardPage) -> bool:

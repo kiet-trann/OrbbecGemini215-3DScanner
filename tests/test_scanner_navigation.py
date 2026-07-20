@@ -14,18 +14,16 @@ from scanner_app.visualization.navigation import (
 )
 
 
-def test_navigation_lists_each_existing_scanner_area_once() -> None:
+def test_navigation_lists_the_four_guided_workspace_routes() -> None:
     items = navigation_items()
 
-    assert [item.page for item in items] == [
-        DashboardPage.OVERVIEW,
-        DashboardPage.CAMERA,
-        DashboardPage.SCAN,
-        DashboardPage.SESSIONS,
-        DashboardPage.OUTPUTS,
+    assert [(item.page, item.title, item.group, item.enabled) for item in items] == [
+        (DashboardPage.NEW_SCAN, "Quét mới", "Làm việc", True),
+        (DashboardPage.CAMERA, "Camera", "Làm việc", True),
+        (DashboardPage.RESULTS, "Phiên & kết quả", "Làm việc", True),
+        (DashboardPage.ADVANCED, "Công cụ nâng cao", "Làm việc", True),
     ]
-    assert all(item.enabled for item in items)
 
 
-def test_dashboard_is_the_default_page() -> None:
-    assert default_page() is DashboardPage.OVERVIEW
+def test_new_scan_is_the_default_page() -> None:
+    assert default_page() is DashboardPage.NEW_SCAN
