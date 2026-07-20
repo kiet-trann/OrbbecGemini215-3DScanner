@@ -238,7 +238,7 @@ class Scanner3DWindow:
         self.active_page = default_page()
         self.page_frames: dict[DashboardPage, ttk.Frame] = {}
         self.sidebar_buttons: dict[DashboardPage, ttk.Button] = {}
-        root.title("Máy quét 3D")
+        root.title("Quét 3D")
         root.geometry("1080x780")
         root.minsize(860, 640)
         self._build()
@@ -263,7 +263,7 @@ class Scanner3DWindow:
         header.pack(fill=tk.X, padx=28, pady=(22, 8))
         title_box = ctk.CTkFrame(header, fg_color="transparent", corner_radius=0)
         title_box.pack(side=tk.LEFT)
-        ctk.CTkLabel(title_box, text="MÁY QUÉT 3D", font=("Segoe UI", 11, "bold"), text_color="#64748B").pack(anchor=tk.W)
+        ctk.CTkLabel(title_box, text="QUÉT 3D", font=("Segoe UI", 11, "bold"), text_color="#64748B").pack(anchor=tk.W)
         self.page_title = tk.StringVar(value="Quét mới")
         ctk.CTkLabel(title_box, textvariable=self.page_title, font=("Segoe UI", 24, "bold"), text_color="#0F172A").pack(anchor=tk.W)
         self.status_chip = ctk.CTkLabel(header, textvariable=self.status, corner_radius=14, fg_color="#E8EEF7", text_color="#1E3A5F", padx=12, pady=6, font=("Segoe UI", 12))
