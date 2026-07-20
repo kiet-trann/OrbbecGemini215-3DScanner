@@ -24,6 +24,12 @@ from scanner_app.rtabmap.windows_bridge import BridgeResult, WindowsRtabmapBridg
 from scanner_app.camera.models import CameraProfile, CameraSettingsSnapshot, CaptureConfig
 from scanner_app.camera.preflight import CameraPreflight, CameraPreflightError
 from scanner_app.visualization.crop_catalog import CroppedObjCatalog, CroppedObjOutput
+from scanner_app.visualization.navigation import (
+    DashboardPage,
+    default_page,
+    is_navigable,
+    navigation_items,
+)
 from scanner_app.visualization.open_actions import OpenActionService
 
 
@@ -200,19 +206,111 @@ class Scanner3DWindow:
         self.cropped_outputs: list[CroppedObjOutput] = []
         self.open_actions = OpenActionService()
         self.latest_export_model: Path | None = None
+        self.active_page = default_page()
+        self.page_frames: dict[DashboardPage, ttk.Frame] = {}
+        self.sidebar_buttons: dict[DashboardPage, ttk.Button] = {}
+        self.dashboard_camera_value = tk.StringVar(value="Unavailable")
+        self.dashboard_runtime_value = tk.StringVar(value="RTAB-Map is not running")
+        self.dashboard_export_value = tk.StringVar(value="No exported model")
+        self.dashboard_session_value = tk.StringVar(value="0 saved sessions")
         root.title("3D Scanner")
-        root.geometry("760x900")
+        root.geometry("1080x780")
+        root.minsize(860, 640)
         self._build()
         self.refresh()
         self._poll_auto_pause()
 
     def _build(self) -> None:
-        frame = ttk.Frame(self.root, padding=14)
-        frame.pack(fill=tk.BOTH, expand=True)
-        ttk.Label(frame, text="3D Scanner", font=("Segoe UI", 18, "bold")).pack(anchor=tk.W)
-        ttk.Label(frame, textvariable=self.status).pack(anchor=tk.W, pady=(2, 10))
-        camera_setup = ttk.LabelFrame(frame, text="Camera setup (before scan)", padding=8)
-        camera_setup.pack(fill=tk.X, pady=(0, 10))
+        self._configure_styles()
+        shell = ttk.Frame(self.root, padding=12)
+        shell.pack(fill=tk.BOTH, expand=True)
+        shell.columnconfigure(1, weight=1)
+        shell.rowconfigure(0, weight=1)
+        sidebar = ttk.Frame(shell, padding=(4, 4, 12, 4), style="Sidebar.TFrame")
+        sidebar.grid(row=0, column=0, sticky="ns")
+        content = ttk.Frame(shell)
+        content.grid(row=0, column=1, sticky="nsew")
+        ttk.Label(content, text="3D Scanner", style="Dashboard.Title.TLabel").pack(anchor=tk.W)
+        ttk.Label(content, textvariable=self.status).pack(anchor=tk.W, pady=(2, 10))
+        self.page_host = ttk.Frame(content)
+        self.page_host.pack(fill=tk.BOTH, expand=True)
+        self.page_host.columnconfigure(0, weight=1)
+        self.page_host.rowconfigure(0, weight=1)
+        self._build_sidebar(sidebar)
+        self._build_overview_page(self._new_page_frame(DashboardPage.OVERVIEW))
+        self._build_camera_page(self._new_page_frame(DashboardPage.CAMERA))
+        self._build_scan_page(self._new_page_frame(DashboardPage.SCAN))
+        self._build_sessions_page(self._new_page_frame(DashboardPage.SESSIONS))
+        self._build_outputs_page(self._new_page_frame(DashboardPage.OUTPUTS))
+        self._build_settings_page(self._new_page_frame(DashboardPage.SETTINGS))
+        self.show_page(self.active_page)
+
+    def _configure_styles(self) -> None:
+        style = ttk.Style(self.root)
+        style.configure("Sidebar.TFrame", background="#173f5f")
+        style.configure("Sidebar.TButton", anchor=tk.W, padding=(12, 8))
+        style.configure("Sidebar.Active.TButton", anchor=tk.W, padding=(12, 8), font=("Segoe UI", 10, "bold"))
+        style.configure("Dashboard.Title.TLabel", font=("Segoe UI", 18, "bold"))
+
+    def _build_sidebar(self, parent: ttk.Frame) -> None:
+        ttk.Label(parent, text="3D Scanner", foreground="white", background="#173f5f",
+                  font=("Segoe UI", 14, "bold")).pack(anchor=tk.W, padx=8, pady=(4, 16))
+        group: str | None = None
+        for item in navigation_items():
+            if item.group != group:
+                group = item.group
+                ttk.Label(parent, text=group.upper(), foreground="#b7d0e2", background="#173f5f",
+                          font=("Segoe UI", 8, "bold")).pack(anchor=tk.W, padx=8, pady=(12, 3))
+            button = ttk.Button(
+                parent,
+                text=item.title,
+                style="Sidebar.TButton",
+                command=lambda page=item.page: self.show_page(page),
+                state=tk.NORMAL if item.enabled else tk.DISABLED,
+            )
+            button.pack(fill=tk.X, pady=2)
+            self.sidebar_buttons[item.page] = button
+
+    def _new_page_frame(self, page: DashboardPage) -> ttk.Frame:
+        frame = ttk.Frame(self.page_host, padding=4)
+        frame.columnconfigure(0, weight=1)
+        self.page_frames[page] = frame
+        return frame
+
+    def show_page(self, page: DashboardPage) -> None:
+        if not is_navigable(page):
+            return
+        for current, frame in self.page_frames.items():
+            frame.grid_remove()
+            if current is not page and current in self.sidebar_buttons:
+                self.sidebar_buttons[current].configure(style="Sidebar.TButton")
+        self.page_frames[page].grid(row=0, column=0, sticky="nsew")
+        if page in self.sidebar_buttons:
+            self.sidebar_buttons[page].configure(style="Sidebar.Active.TButton")
+        self.active_page = page
+
+    def _build_overview_page(self, parent: ttk.Frame) -> None:
+        ttk.Label(parent, text="Scanner overview", font=("Segoe UI", 16, "bold")).pack(anchor=tk.W)
+        ttk.Label(parent, text="Open any workspace area without following a fixed sequence.").pack(anchor=tk.W, pady=(2, 12))
+        cards = ttk.Frame(parent)
+        cards.pack(fill=tk.X)
+        for title, value, page in (
+            ("Camera", self.dashboard_camera_value, DashboardPage.CAMERA),
+            ("Scan", self.dashboard_runtime_value, DashboardPage.SCAN),
+            ("Saved sessions", self.dashboard_session_value, DashboardPage.SESSIONS),
+            ("Latest export", self.dashboard_export_value, DashboardPage.OUTPUTS),
+        ):
+            card = ttk.LabelFrame(cards, text=title, padding=10)
+            card.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(0, 8))
+            ttk.Label(card, textvariable=value, wraplength=180).pack(anchor=tk.W)
+            ttk.Button(card, text=f"Open {title.lower()}", command=lambda current=page: self.show_page(current)).pack(
+                anchor=tk.W, pady=(10, 0)
+            )
+
+    def _build_camera_page(self, parent: ttk.Frame) -> None:
+        ttk.Label(parent, text="Camera setup", font=("Segoe UI", 16, "bold")).pack(anchor=tk.W)
+        camera_setup = ttk.LabelFrame(parent, text="Camera setup (before scan)", padding=8)
+        camera_setup.pack(fill=tk.X, pady=(8, 10))
         profile_controls = ttk.Frame(camera_setup)
         profile_controls.pack(fill=tk.X)
         ttk.Label(profile_controls, text="Scan profile:").pack(side=tk.LEFT)
@@ -241,14 +339,20 @@ class Scanner3DWindow:
         self.camera_settings_tree.column("#0", width=190)
         self.camera_settings_tree.column("value", width=510)
         self.camera_settings_tree.pack(fill=tk.X, pady=(8, 0))
-        controls = ttk.Frame(frame)
+
+    def _build_scan_page(self, parent: ttk.Frame) -> None:
+        ttk.Label(parent, text="Scan controls", font=("Segoe UI", 16, "bold")).pack(anchor=tk.W)
+        controls = ttk.Frame(parent)
         controls.pack(fill=tk.X)
         ttk.Button(controls, text="Pause", command=lambda: self._bridge_action(self.controller.request_pause)).pack(side=tk.LEFT, padx=6)
         ttk.Button(controls, text="Resume", command=lambda: self._bridge_action(self.controller.request_resume)).pack(side=tk.LEFT, padx=6)
         ttk.Checkbutton(controls, text="Auto-pause (experimental)", variable=self.auto_enabled,
                         command=self._toggle_auto_pause).pack(side=tk.RIGHT)
-        ttk.Label(frame, textvariable=self.auto_status).pack(anchor=tk.W, pady=(10, 6))
-        sessions = ttk.LabelFrame(frame, text="Saved RTAB-Map sessions", padding=8)
+        ttk.Label(parent, textvariable=self.auto_status).pack(anchor=tk.W, pady=(10, 6))
+
+    def _build_sessions_page(self, parent: ttk.Frame) -> None:
+        ttk.Label(parent, text="Saved RTAB-Map sessions", font=("Segoe UI", 16, "bold")).pack(anchor=tk.W)
+        sessions = ttk.LabelFrame(parent, text="Saved RTAB-Map sessions", padding=8)
         sessions.pack(fill=tk.BOTH, expand=True)
         self.tree = ttk.Treeview(sessions, columns=("size", "modified"), show="tree headings", height=6)
         self.tree.heading("#0", text="Database")
@@ -258,7 +362,14 @@ class Scanner3DWindow:
         self.tree.column("size", width=100)
         self.tree.column("modified", width=180)
         self.tree.pack(fill=tk.BOTH, expand=True)
-        crops = ttk.LabelFrame(frame, text="Cropped OBJ outputs", padding=8)
+        actions = ttk.Frame(parent)
+        actions.pack(fill=tk.X, pady=(8, 0))
+        ttk.Button(actions, text="Refresh sessions", command=self.refresh).pack(side=tk.LEFT)
+        ttk.Button(actions, text="Export raw OBJ", command=self.export_selected).pack(side=tk.RIGHT)
+
+    def _build_outputs_page(self, parent: ttk.Frame) -> None:
+        ttk.Label(parent, text="Export & crop", font=("Segoe UI", 16, "bold")).pack(anchor=tk.W)
+        crops = ttk.LabelFrame(parent, text="Cropped OBJ outputs", padding=8)
         crops.pack(fill=tk.BOTH, expand=True, pady=(8, 0))
         self.crop_tree = ttk.Treeview(crops, columns=("obj", "folder", "size", "modified"), show="headings", height=6)
         self.crop_tree.heading("obj", text="OBJ")
@@ -271,9 +382,8 @@ class Scanner3DWindow:
         self.crop_tree.column("modified", width=180)
         self.crop_tree.pack(fill=tk.BOTH, expand=True)
         self.crop_tree.bind("<<TreeviewSelect>>", self._on_crop_selection)
-        actions = ttk.Frame(frame)
+        actions = ttk.Frame(parent)
         actions.pack(fill=tk.X, pady=(8, 0))
-        ttk.Button(actions, text="Refresh sessions", command=self.refresh).pack(side=tk.LEFT)
         self.open_folder_button = ttk.Button(
             actions, text="Open output folder", command=self.open_latest_output_folder, state=tk.DISABLED
         )
@@ -287,7 +397,12 @@ class Scanner3DWindow:
         )
         self.open_exported_button.pack(side=tk.RIGHT, padx=(0, 8))
         ttk.Button(actions, text="Crop raw OBJ", command=self.choose_crop_source).pack(side=tk.RIGHT, padx=(0, 8))
-        ttk.Button(actions, text="Export raw OBJ", command=self.export_selected).pack(side=tk.RIGHT)
+
+    def _build_settings_page(self, parent: ttk.Frame) -> None:
+        ttk.Label(parent, text="Settings", font=("Segoe UI", 16, "bold")).pack(anchor=tk.W)
+        ttk.Label(parent, text="Settings will appear here when there are configurable options.").pack(
+            anchor=tk.W, pady=(8, 0)
+        )
 
     def launch(self) -> None:
         try:
