@@ -37,3 +37,14 @@ def card(parent):
     import customtkinter as ctk
 
     return ctk.CTkFrame(parent, fg_color=CARD, border_color=BORDER, border_width=1, corner_radius=12)
+
+
+def configure_treeview_style(root) -> None:
+    from tkinter import ttk
+
+    style = ttk.Style(root)
+    style.configure("Dashboard.TFrame", background=SURFACE)
+    style.configure("Dashboard.TLabelframe", background=CARD, bordercolor=BORDER)
+    style.configure("Dashboard.TLabelframe.Label", background=CARD, foreground="#0F172A", font=("Segoe UI", 11, "bold"))
+    style.configure("Dashboard.Treeview", rowheight=30, font=("Segoe UI", 10), background=CARD, fieldbackground=CARD)
+    style.configure("Dashboard.Treeview.Heading", font=("Segoe UI", 10, "bold"))

@@ -32,6 +32,7 @@ from scanner_app.visualization.dashboard_theme import (
     SURFACE,
     card,
     configure_dashboard_theme,
+    configure_treeview_style,
 )
 from scanner_app.visualization.guided_workflow import GuidedMode, GuidedWorkflow, guided_workflow
 from scanner_app.visualization.navigation import (
@@ -241,6 +242,7 @@ class Scanner3DWindow:
 
     def _build(self) -> None:
         configure_dashboard_theme(self.root)
+        configure_treeview_style(self.root)
         self._configure_styles()
         shell = ctk.CTkFrame(self.root, fg_color=SURFACE, corner_radius=0)
         shell.pack(fill=tk.BOTH, expand=True, padx=0, pady=0)
@@ -344,7 +346,7 @@ class Scanner3DWindow:
 
     def _build_camera_page(self, parent: ttk.Frame) -> None:
         ttk.Label(parent, text="Thiết lập camera", font=("Segoe UI", 16, "bold")).pack(anchor=tk.W)
-        camera_setup = ttk.LabelFrame(parent, text="Cấu hình quét", padding=8)
+        camera_setup = ttk.LabelFrame(parent, text="Cấu hình quét", padding=14, style="Dashboard.TLabelframe")
         camera_setup.pack(fill=tk.X, pady=(8, 10))
         profile_controls = ttk.Frame(camera_setup)
         profile_controls.pack(fill=tk.X)
@@ -367,7 +369,7 @@ class Scanner3DWindow:
         )
         self.apply_camera_button.pack(side=tk.LEFT)
         self.camera_settings_tree = ttk.Treeview(
-            camera_setup, columns=("value",), show="tree headings", height=8
+            camera_setup, columns=("value",), show="tree headings", height=8, style="Dashboard.Treeview"
         )
         self.camera_settings_tree.heading("#0", text="Thông số")
         self.camera_settings_tree.heading("value", text="Giá trị hiện tại")
@@ -390,9 +392,9 @@ class Scanner3DWindow:
 
     def _build_results_page(self, parent: ttk.Frame) -> None:
         ttk.Label(parent, text="Phiên & kết quả", font=("Segoe UI", 16, "bold")).pack(anchor=tk.W)
-        sessions = ttk.LabelFrame(parent, text="Phiên quét đã lưu", padding=8)
+        sessions = ttk.LabelFrame(parent, text="Phiên quét đã lưu", padding=14, style="Dashboard.TLabelframe")
         sessions.pack(fill=tk.BOTH, expand=True, pady=(8, 10))
-        self.tree = ttk.Treeview(sessions, columns=("size", "modified"), show="tree headings", height=6)
+        self.tree = ttk.Treeview(sessions, columns=("size", "modified"), show="tree headings", height=6, style="Dashboard.Treeview")
         self.tree.heading("#0", text="Cơ sở dữ liệu")
         self.tree.heading("size", text="Dung lượng")
         self.tree.heading("modified", text="Cập nhật (UTC)")
@@ -405,9 +407,9 @@ class Scanner3DWindow:
         ttk.Button(actions, text="Làm mới phiên", command=self.refresh).pack(side=tk.LEFT)
         ttk.Button(actions, text="Xuất OBJ gốc", command=self.export_selected).pack(side=tk.RIGHT)
 
-        crops = ttk.LabelFrame(parent, text="Mô hình đã cắt", padding=8)
+        crops = ttk.LabelFrame(parent, text="Mô hình đã cắt", padding=14, style="Dashboard.TLabelframe")
         crops.pack(fill=tk.BOTH, expand=True, pady=(8, 0))
-        self.crop_tree = ttk.Treeview(crops, columns=("obj", "folder", "size", "modified"), show="headings", height=6)
+        self.crop_tree = ttk.Treeview(crops, columns=("obj", "folder", "size", "modified"), show="headings", height=6, style="Dashboard.Treeview")
         self.crop_tree.heading("obj", text="OBJ")
         self.crop_tree.heading("folder", text="Thư mục đầu ra")
         self.crop_tree.heading("size", text="Dung lượng")
