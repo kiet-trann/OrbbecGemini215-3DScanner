@@ -65,8 +65,84 @@ class CardMetadata:
     detail: tuple[tuple[str, str], ...]
 
 
+@dataclass(frozen=True)
+class CameraProfileCard:
+    profile: CameraProfile
+    label: str
+    range_label: str
+    selected: bool
+
+
+@dataclass(frozen=True)
+class CameraDeviceCard:
+    title: str
+    subtitle: str
+    inspection_label: str
+
+
+@dataclass(frozen=True)
+class CameraFactGroup:
+    title: str
+    subtitle: str
+    facts: tuple[tuple[str, str], ...]
+
+
 def camera_control_state(locked: bool) -> str:
     return tk.DISABLED if locked else tk.NORMAL
+
+
+def camera_dashboard_cards(
+    profile: CameraProfile, snapshot: CameraSettingsSnapshot | None
+) -> tuple[tuple[CameraProfileCard, ...], CameraDeviceCard, tuple[CameraFactGroup, ...]]:
+    profiles = tuple(
+        CameraProfileCard(
+            candidate,
+            candidate.display_name,
+            f"{candidate.distance_range_m[0]:.2f}–{candidate.distance_range_m[1]:.2f} m".replace(".", ","),
+            candidate is profile,
+        )
+        for candidate in CameraProfile
+    )
+    if snapshot is None:
+        device = CameraDeviceCard(
+            "Chưa kiểm tra thiết bị",
+            "Chưa có serial hoặc firmware",
+            "Kiểm tra thiết bị để xác nhận mode và căn chỉnh.",
+        )
+        config = CaptureConfig()
+        filters = "Chưa kiểm tra"
+        alignment = "Chưa kiểm tra"
+    else:
+        device = CameraDeviceCard(
+            snapshot.device_name,
+            f"{snapshot.serial_number} · Firmware {snapshot.firmware_version}",
+            f"{snapshot.confirmed_mode} · căn chỉnh {snapshot.alignment_target}",
+        )
+        config = snapshot.capture_config
+        filters = "; ".join(snapshot.enabled_depth_filters) or "None"
+        alignment = snapshot.alignment_target
+    groups = (
+        CameraFactGroup(
+            "Thông số luồng",
+            "Depth & Color",
+            (
+                ("Depth stream", f"{config.depth_width}×{config.depth_height} {config.depth_format} @ {config.depth_fps} FPS"),
+                ("Color stream", f"{config.color_width}×{config.color_height} {config.color_format} @ {config.color_fps} FPS"),
+                ("IMU", f"{config.imu_hz} Hz"),
+            ),
+        ),
+        CameraFactGroup(
+            "Khoảng cách & bộ lọc",
+            "Depth range & filters",
+            (
+                ("Depth range", f"{config.depth_min_m:.2f}–{config.depth_max_m:.2f} m"),
+                ("Normal scan range", f"{config.normal_scan_min_m:.2f}–{config.normal_scan_max_m:.2f} m"),
+                ("Enabled depth filters", filters),
+                ("Alignment target", alignment),
+            ),
+        ),
+    )
+    return profiles, device, groups
 
 
 def display_size(size_bytes: int) -> str:

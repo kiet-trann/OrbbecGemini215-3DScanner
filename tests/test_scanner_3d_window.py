@@ -31,6 +31,7 @@ from scanner_app.visualization.scanner_3d_window import (
     Scanner3DController,
     Scanner3DWindow,
     build_summary_cards,
+    camera_dashboard_cards,
     camera_control_state,
     camera_settings_rows,
     crop_card_metadata,
@@ -156,6 +157,32 @@ def test_camera_settings_rows_show_defaults_before_inspection_and_snapshot_after
 def test_camera_control_state_disables_profile_changes_when_locked() -> None:
     assert camera_control_state(False) == tk.NORMAL
     assert camera_control_state(True) == tk.DISABLED
+
+
+def test_camera_dashboard_marks_the_active_profile_and_exposes_its_range() -> None:
+    profiles, _device, _groups = camera_dashboard_cards(CameraProfile.NEAR, None)
+
+    active = next(card for card in profiles if card.selected)
+
+    assert active.profile is CameraProfile.NEAR
+    assert active.label == CameraProfile.NEAR.display_name
+    assert active.range_label == "0,15–0,32 m"
+
+
+def test_camera_dashboard_uses_a_clear_uninspected_device_summary() -> None:
+    _profiles, device, groups = camera_dashboard_cards(CameraProfile.NEAR, None)
+
+    assert device.title == "Chưa kiểm tra thiết bị"
+    assert device.inspection_label == "Kiểm tra thiết bị để xác nhận mode và căn chỉnh."
+    assert groups[0].title == "Thông số luồng"
+
+
+def test_camera_dashboard_keeps_orbbec_sdk_terms_after_inspection() -> None:
+    _profiles, device, groups = camera_dashboard_cards(CameraProfile.NEAR, make_snapshot())
+
+    assert device.title == "Gemini 215"
+    assert "Close_Up Precision Mode" in device.inspection_label
+    assert ("Enabled depth filters", "TemporalFilter") in groups[1].facts
 
 
 class FakePageFrame:
