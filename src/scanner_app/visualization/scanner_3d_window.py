@@ -11,6 +11,8 @@ import time
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 
+import customtkinter as ctk
+
 from scanner_app.rtabmap.activity import ActivityMonitor, AutoPauseState, SqliteNodeCountProbe
 from scanner_app.rtabmap.catalog import SessionCatalog
 from scanner_app.rtabmap.exporter import ExportRequest, ExportService
@@ -24,6 +26,13 @@ from scanner_app.rtabmap.windows_bridge import BridgeResult, WindowsRtabmapBridg
 from scanner_app.camera.models import CameraProfile, CameraSettingsSnapshot, CaptureConfig
 from scanner_app.camera.preflight import CameraPreflight, CameraPreflightError
 from scanner_app.visualization.crop_catalog import CroppedObjCatalog, CroppedObjOutput
+from scanner_app.visualization.dashboard_theme import (
+    NAVY,
+    PRIMARY,
+    SURFACE,
+    card,
+    configure_dashboard_theme,
+)
 from scanner_app.visualization.guided_workflow import GuidedMode, GuidedWorkflow, guided_workflow
 from scanner_app.visualization.navigation import (
     DashboardPage,
@@ -48,6 +57,19 @@ class DashboardState:
 
 def camera_control_state(locked: bool) -> str:
     return tk.DISABLED if locked else tk.NORMAL
+
+
+def build_summary_cards(
+    profile: CameraProfile, sessions: list[SavedSession], latest_export_model: Path | None
+) -> tuple[tuple[str, str, DashboardPage], ...]:
+    count = len(sessions)
+    session_copy = f"{count} phiên đã lưu" if count else "Chưa bắt đầu"
+    result_copy = latest_export_model.name if latest_export_model is not None else "Chưa có mô hình"
+    return (
+        ("01 · CAMERA", profile.display_name, DashboardPage.CAMERA),
+        ("02 · PHIÊN QUÉT", session_copy, DashboardPage.RESULTS),
+        ("03 · KẾT QUẢ", result_copy, DashboardPage.RESULTS),
+    )
 
 
 def camera_settings_rows(
@@ -218,19 +240,27 @@ class Scanner3DWindow:
         self._poll_auto_pause()
 
     def _build(self) -> None:
+        configure_dashboard_theme(self.root)
         self._configure_styles()
-        shell = ttk.Frame(self.root, padding=12)
-        shell.pack(fill=tk.BOTH, expand=True)
+        shell = ctk.CTkFrame(self.root, fg_color=SURFACE, corner_radius=0)
+        shell.pack(fill=tk.BOTH, expand=True, padx=0, pady=0)
         shell.columnconfigure(1, weight=1)
         shell.rowconfigure(0, weight=1)
-        sidebar = ttk.Frame(shell, padding=(4, 4, 12, 4), style="Sidebar.TFrame")
+        sidebar = ctk.CTkFrame(shell, width=220, fg_color=NAVY, corner_radius=0)
         sidebar.grid(row=0, column=0, sticky="ns")
-        content = ttk.Frame(shell)
+        sidebar.grid_propagate(False)
+        content = ctk.CTkFrame(shell, fg_color=SURFACE, corner_radius=0)
         content.grid(row=0, column=1, sticky="nsew")
-        ttk.Label(content, text="Máy quét 3D", style="Dashboard.Title.TLabel").pack(anchor=tk.W)
-        ttk.Label(content, textvariable=self.status).pack(anchor=tk.W, pady=(2, 10))
-        self.page_host = ttk.Frame(content)
-        self.page_host.pack(fill=tk.BOTH, expand=True)
+        header = ctk.CTkFrame(content, fg_color="transparent", corner_radius=0)
+        header.pack(fill=tk.X, padx=28, pady=(22, 8))
+        title_box = ctk.CTkFrame(header, fg_color="transparent", corner_radius=0)
+        title_box.pack(side=tk.LEFT)
+        ctk.CTkLabel(title_box, text="MÁY QUÉT 3D", font=("Segoe UI", 11, "bold"), text_color="#64748B").pack(anchor=tk.W)
+        ctk.CTkLabel(title_box, text="Quét mới", font=("Segoe UI", 24, "bold"), text_color="#0F172A").pack(anchor=tk.W)
+        self.status_chip = ctk.CTkLabel(header, textvariable=self.status, corner_radius=14, fg_color="#E8EEF7", text_color="#1E3A5F", padx=12, pady=6, font=("Segoe UI", 12))
+        self.status_chip.pack(side=tk.RIGHT, pady=(10, 0))
+        self.page_host = ctk.CTkScrollableFrame(content, fg_color=SURFACE, corner_radius=0)
+        self.page_host.pack(fill=tk.BOTH, expand=True, padx=24, pady=(0, 22))
         self.page_host.columnconfigure(0, weight=1)
         self.page_host.rowconfigure(0, weight=1)
         self._build_sidebar(sidebar)
@@ -249,22 +279,25 @@ class Scanner3DWindow:
         style.configure("Guided.Primary.TButton", padding=(14, 9), font=("Segoe UI", 10, "bold"))
 
     def _build_sidebar(self, parent: ttk.Frame) -> None:
-        ttk.Label(parent, text="Máy quét 3D", foreground="white", background="#173f5f",
-                  font=("Segoe UI", 14, "bold")).pack(anchor=tk.W, padx=8, pady=(4, 16))
+        ctk.CTkLabel(parent, text="3D Scanner", text_color="white", font=("Segoe UI", 18, "bold")).pack(anchor=tk.W, padx=22, pady=(28, 28))
         group: str | None = None
         for item in navigation_items():
             if item.group != group:
                 group = item.group
-                ttk.Label(parent, text=group.upper(), foreground="#b7d0e2", background="#173f5f",
-                          font=("Segoe UI", 8, "bold")).pack(anchor=tk.W, padx=8, pady=(12, 3))
-            button = ttk.Button(
+                ctk.CTkLabel(parent, text=group.upper(), text_color="#A7B9CA", font=("Segoe UI", 10, "bold")).pack(anchor=tk.W, padx=22, pady=(0, 8))
+            button = ctk.CTkButton(
                 parent,
                 text=item.title,
-                style="Sidebar.TButton",
+                anchor="w",
+                height=40,
+                corner_radius=8,
+                fg_color="transparent",
+                hover_color="#244C70",
+                text_color="white",
                 command=lambda page=item.page: self.show_page(page),
                 state=tk.NORMAL if item.enabled else tk.DISABLED,
             )
-            button.pack(fill=tk.X, pady=2)
+            button.pack(fill=tk.X, padx=12, pady=3)
             self.sidebar_buttons[item.page] = button
 
     def _new_page_frame(self, page: DashboardPage) -> ttk.Frame:
@@ -279,32 +312,35 @@ class Scanner3DWindow:
         for current, frame in self.page_frames.items():
             frame.grid_remove()
             if current is not page and current in self.sidebar_buttons:
-                self.sidebar_buttons[current].configure(style="Sidebar.TButton")
+                self.sidebar_buttons[current].configure(fg_color="transparent")
         self.page_frames[page].grid(row=0, column=0, sticky="nsew")
         if page in self.sidebar_buttons:
-            self.sidebar_buttons[page].configure(style="Sidebar.Active.TButton")
+            self.sidebar_buttons[page].configure(fg_color=PRIMARY)
         self.active_page = page
 
     def _build_new_scan_page(self, parent: ttk.Frame) -> None:
-        ttk.Label(parent, text="Quét mới", font=("Segoe UI", 16, "bold")).pack(anchor=tk.W)
-        ttk.Label(parent, text="Thực hiện lần lượt các bước dưới đây để tạo mô hình 3D.").pack(
-            anchor=tk.W, pady=(2, 12)
-        )
-        workflow = ttk.LabelFrame(parent, text="Trạng thái quét", padding=12)
-        workflow.pack(fill=tk.X)
+        parent.configure(style="Dashboard.TFrame")
+        ctk.CTkLabel(parent, text="Sẵn sàng tạo mô hình", font=("Segoe UI", 14), text_color="#64748B").pack(anchor=tk.W, pady=(0, 14))
+        workflow = card(parent)
+        workflow.pack(fill=tk.X, pady=(0, 14))
         self.new_scan_heading = tk.StringVar(value="Bước 1 / 3 · Chuẩn bị camera")
         self.new_scan_detail = tk.StringVar(value="Kiểm tra camera trước khi bắt đầu.")
-        ttk.Label(workflow, textvariable=self.new_scan_heading, font=("Segoe UI", 12, "bold")).pack(anchor=tk.W)
-        ttk.Label(workflow, textvariable=self.new_scan_detail, wraplength=650).pack(anchor=tk.W, pady=(4, 10))
-        self.new_scan_primary_button = ttk.Button(workflow, style="Guided.Primary.TButton")
-        self.new_scan_primary_button.pack(anchor=tk.W)
-        self.new_scan_results_button = ttk.Button(
+        ctk.CTkLabel(workflow, text="BƯỚC HIỆN TẠI · 01 / 03", font=("Segoe UI", 11, "bold"), text_color="#64748B").pack(anchor=tk.W, padx=20, pady=(18, 2))
+        ctk.CTkLabel(workflow, textvariable=self.new_scan_heading, font=("Segoe UI", 18, "bold"), text_color="#0F172A").pack(anchor=tk.W, padx=20)
+        ctk.CTkLabel(workflow, textvariable=self.new_scan_detail, font=("Segoe UI", 13), text_color="#64748B", wraplength=600, justify="left").pack(anchor=tk.W, padx=20, pady=(5, 14))
+        self.new_scan_primary_button = ctk.CTkButton(workflow, text="Kiểm tra camera", fg_color=PRIMARY, hover_color="#1D4ED8", height=40, corner_radius=8)
+        self.new_scan_primary_button.pack(anchor=tk.W, padx=20, pady=(0, 18))
+        self.new_scan_results_button = ctk.CTkButton(
             workflow, command=lambda: self.show_page(DashboardPage.RESULTS)
         )
-        self.new_scan_results_button.pack(anchor=tk.W, pady=(8, 0))
-        ttk.Button(parent, text="Mở cài đặt camera", command=lambda: self.show_page(DashboardPage.CAMERA)).pack(
-            anchor=tk.W, pady=(12, 0)
-        )
+        self.new_scan_results_button.pack_forget()
+        cards = ctk.CTkFrame(parent, fg_color="transparent")
+        cards.pack(fill=tk.X)
+        for title, value, page in build_summary_cards(CameraProfile.NEAR, [], None):
+            item = card(cards)
+            item.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(0, 10))
+            ctk.CTkLabel(item, text=title, font=("Segoe UI", 10, "bold"), text_color="#64748B").pack(anchor=tk.W, padx=16, pady=(14, 5))
+            ctk.CTkButton(item, text=value, fg_color="transparent", hover_color="#EEF3F8", text_color="#0F172A", anchor="w", command=lambda route=page: self.show_page(route)).pack(fill=tk.X, padx=8, pady=(0, 10))
 
     def _build_camera_page(self, parent: ttk.Frame) -> None:
         ttk.Label(parent, text="Thiết lập camera", font=("Segoe UI", 16, "bold")).pack(anchor=tk.W)
@@ -769,7 +805,7 @@ def main() -> int:
     controller = Scanner3DController(
         runtime=runtime, bridge=bridge, monitor=monitor, catalog=catalog, preflight=CameraPreflight()
     )
-    root = tk.Tk()
+    root = ctk.CTk()
     Scanner3DWindow(root, controller=controller, monitor=monitor,
                          probe=SqliteNodeCountProbe(session_dir / "rtabmap.tmp.db"), catalog=catalog,
                          exporter=ExportService(exporter=runtime._paths.exporter),

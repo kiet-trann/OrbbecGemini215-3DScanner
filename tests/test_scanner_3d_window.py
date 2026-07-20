@@ -22,11 +22,13 @@ from scanner_app.rtabmap.exporter import ExportResult
 from scanner_app.rtabmap.windows_bridge import BridgeResult
 from scanner_app.camera.models import CameraProfile, CameraSettingsSnapshot, CaptureConfig
 from scanner_app.visualization.crop_catalog import CroppedObjOutput
+from scanner_app.visualization.dashboard_theme import PRIMARY
 from scanner_app.visualization.navigation import DashboardPage
 from scanner_app.visualization.scanner_3d_window import (
     DashboardState,
     Scanner3DController,
     Scanner3DWindow,
+    build_summary_cards,
     camera_control_state,
     camera_settings_rows,
     crop_preview_limits,
@@ -164,12 +166,26 @@ class FakePageFrame:
         self.remove_calls += 1
 
 
+def test_summary_cards_keep_camera_session_and_result_navigation(tmp_path: Path) -> None:
+    cards = build_summary_cards(
+        CameraProfile.NEAR,
+        [SavedSession(tmp_path / "scan.db", 1, modified_at=None)],  # type: ignore[arg-type]
+        tmp_path / "scan.glb",
+    )
+
+    assert cards == (
+        ("01 · CAMERA", CameraProfile.NEAR.display_name, DashboardPage.CAMERA),
+        ("02 · PHIÊN QUÉT", "1 phiên đã lưu", DashboardPage.RESULTS),
+        ("03 · KẾT QUẢ", "scan.glb", DashboardPage.RESULTS),
+    )
+
+
 class FakeSidebarButton:
     def __init__(self) -> None:
-        self.styles: list[str] = []
+        self.colors: list[str] = []
 
-    def configure(self, *, style: str) -> None:
-        self.styles.append(style)
+    def configure(self, *, fg_color: str) -> None:
+        self.colors.append(fg_color)
 
 
 def test_show_page_only_changes_visible_page_and_sidebar_style() -> None:
@@ -190,8 +206,8 @@ def test_show_page_only_changes_visible_page_and_sidebar_style() -> None:
     assert window.active_page is DashboardPage.CAMERA
     assert new_scan.remove_calls == 1
     assert camera.grid_calls == 1
-    assert new_scan_button.styles == ["Sidebar.TButton"]
-    assert camera_button.styles == ["Sidebar.Active.TButton"]
+    assert new_scan_button.colors == ["transparent"]
+    assert camera_button.colors == [PRIMARY]
 
 
 def test_refresh_new_scan_uses_existing_dashboard_state_for_the_primary_action() -> None:
