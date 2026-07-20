@@ -10,7 +10,6 @@ class DashboardPage(str, Enum):
     SCAN = "scan"
     SESSIONS = "sessions"
     OUTPUTS = "outputs"
-    SETTINGS = "settings"
 
 
 @dataclass(frozen=True)
@@ -28,7 +27,6 @@ def navigation_items() -> tuple[NavigationItem, ...]:
         NavigationItem(DashboardPage.SCAN, "Scan controls", "Workspace"),
         NavigationItem(DashboardPage.SESSIONS, "Saved sessions", "Models"),
         NavigationItem(DashboardPage.OUTPUTS, "Export & crop", "Models"),
-        NavigationItem(DashboardPage.SETTINGS, "Settings", "System", enabled=False),
     )
 
 
