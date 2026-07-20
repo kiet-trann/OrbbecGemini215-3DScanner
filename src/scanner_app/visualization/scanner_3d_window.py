@@ -177,16 +177,6 @@ def crop_view_preset(name: str) -> tuple[float, float]:
     }[name]
 
 
-def selected_crop_path(outputs: list[CroppedObjOutput], selection: tuple[str, ...]) -> Path | None:
-    if not selection:
-        return None
-    try:
-        index = int(selection[0])
-    except ValueError:
-        return None
-    return outputs[index].path if 0 <= index < len(outputs) else None
-
-
 class Scanner3DController:
     def __init__(self, *, runtime, bridge, monitor, catalog, preflight=None) -> None:
         self._runtime = runtime
@@ -271,8 +261,10 @@ class Scanner3DWindow:
         self.auto_status = tk.StringVar(value="Tự dừng đang tắt")
         self.camera_profile_value = tk.StringVar(value=CameraProfile.NEAR.display_name)
         self.sessions: list[SavedSession] = []
+        self.selected_session_path: Path | None = None
         self.crop_catalog = CroppedObjCatalog(output_root)
         self.cropped_outputs: list[CroppedObjOutput] = []
+        self.selected_crop_path: Path | None = None
         self.open_actions = OpenActionService()
         self.latest_export_model: Path | None = None
         self.runtime_was_running = False
@@ -440,50 +432,39 @@ class Scanner3DWindow:
         ttk.Label(parent, textvariable=self.auto_status).pack(anchor=tk.W, pady=(10, 6))
 
     def _build_results_page(self, parent: ttk.Frame) -> None:
-        ttk.Label(parent, text="Phiên & kết quả", font=("Segoe UI", 16, "bold")).pack(anchor=tk.W)
-        sessions = ttk.LabelFrame(parent, text="Phiên quét đã lưu", padding=14, style="Dashboard.TLabelframe")
-        sessions.pack(fill=tk.BOTH, expand=True, pady=(8, 10))
-        self.tree = ttk.Treeview(sessions, columns=("size", "modified"), show="tree headings", height=6, style="Dashboard.Treeview")
-        self.tree.heading("#0", text="Cơ sở dữ liệu")
-        self.tree.heading("size", text="Dung lượng")
-        self.tree.heading("modified", text="Cập nhật (UTC)")
-        self.tree.column("#0", width=330)
-        self.tree.column("size", width=100)
-        self.tree.column("modified", width=180)
-        self.tree.pack(fill=tk.BOTH, expand=True)
-        actions = ttk.Frame(sessions)
-        actions.pack(fill=tk.X, pady=(8, 0))
-        ttk.Button(actions, text="Làm mới phiên", command=self.refresh).pack(side=tk.LEFT)
-        ttk.Button(actions, text="Xuất OBJ gốc", command=self.export_selected).pack(side=tk.RIGHT)
+        ctk.CTkLabel(parent, text="Phiên quét & kết quả", font=("Segoe UI", 18, "bold"), text_color="#0F172A").pack(anchor=tk.W)
+        ctk.CTkLabel(
+            parent,
+            text="Chọn một mục để xem chi tiết và thực hiện thao tác phù hợp.",
+            font=("Segoe UI", 13),
+            text_color="#64748B",
+        ).pack(anchor=tk.W, pady=(3, 14))
 
-        crops = ttk.LabelFrame(parent, text="Mô hình đã cắt", padding=14, style="Dashboard.TLabelframe")
-        crops.pack(fill=tk.BOTH, expand=True, pady=(8, 0))
-        self.crop_tree = ttk.Treeview(crops, columns=("obj", "folder", "size", "modified"), show="headings", height=6, style="Dashboard.Treeview")
-        self.crop_tree.heading("obj", text="OBJ")
-        self.crop_tree.heading("folder", text="Thư mục đầu ra")
-        self.crop_tree.heading("size", text="Dung lượng")
-        self.crop_tree.heading("modified", text="Cập nhật (UTC)")
-        self.crop_tree.column("obj", width=230)
-        self.crop_tree.column("folder", width=190)
-        self.crop_tree.column("size", width=90)
-        self.crop_tree.column("modified", width=180)
-        self.crop_tree.pack(fill=tk.BOTH, expand=True)
-        self.crop_tree.bind("<<TreeviewSelect>>", self._on_crop_selection)
-        actions = ttk.Frame(parent)
-        actions.pack(fill=tk.X, pady=(8, 0))
-        self.open_folder_button = ttk.Button(
-            actions, text="Mở thư mục đầu ra", command=self.open_latest_output_folder, state=tk.DISABLED
-        )
-        self.open_folder_button.pack(side=tk.RIGHT, padx=(0, 8))
-        self.open_obj_button = ttk.Button(
-            actions, text="Mở mô hình đã cắt", command=self.open_latest_cropped_obj, state=tk.DISABLED
-        )
-        self.open_obj_button.pack(side=tk.RIGHT, padx=(0, 8))
-        self.open_exported_button = ttk.Button(
-            actions, text="Mở mô hình đã xuất", command=self.open_latest_exported_model, state=tk.DISABLED
-        )
-        self.open_exported_button.pack(side=tk.RIGHT, padx=(0, 8))
-        ttk.Button(actions, text="Cắt OBJ gốc", command=self.choose_crop_source).pack(side=tk.RIGHT, padx=(0, 8))
+        sessions = card(parent)
+        sessions.pack(fill=tk.X, pady=(0, 14))
+        session_header = ctk.CTkFrame(sessions, fg_color="transparent")
+        session_header.pack(fill=tk.X, padx=18, pady=(16, 8))
+        ctk.CTkLabel(session_header, text="PHIÊN QUÉT ĐÃ LƯU", font=("Segoe UI", 11, "bold"), text_color="#64748B").pack(side=tk.LEFT)
+        self.session_count = tk.StringVar(value="0 phiên")
+        ctk.CTkLabel(session_header, textvariable=self.session_count, corner_radius=10, fg_color="#EEF3F8", text_color="#475569", padx=9, pady=3, font=("Segoe UI", 11, "bold")).pack(side=tk.LEFT, padx=(8, 0))
+        ctk.CTkButton(session_header, text="Làm mới", command=self.refresh, width=84, height=32, corner_radius=8, fg_color="#EAF1FF", hover_color="#DCE8FF", text_color=PRIMARY).pack(side=tk.RIGHT)
+        self.session_list = ctk.CTkFrame(sessions, fg_color="transparent")
+        self.session_list.pack(fill=tk.X, padx=12)
+        self.session_detail = ctk.CTkFrame(sessions, fg_color="transparent")
+        self.session_detail.pack(fill=tk.X, padx=12, pady=(8, 14))
+
+        crops = card(parent)
+        crops.pack(fill=tk.X)
+        crop_header = ctk.CTkFrame(crops, fg_color="transparent")
+        crop_header.pack(fill=tk.X, padx=18, pady=(16, 8))
+        ctk.CTkLabel(crop_header, text="MÔ HÌNH ĐÃ CẮT", font=("Segoe UI", 11, "bold"), text_color="#64748B").pack(side=tk.LEFT)
+        self.crop_count = tk.StringVar(value="0 mô hình")
+        ctk.CTkLabel(crop_header, textvariable=self.crop_count, corner_radius=10, fg_color="#EEF3F8", text_color="#475569", padx=9, pady=3, font=("Segoe UI", 11, "bold")).pack(side=tk.LEFT, padx=(8, 0))
+        ctk.CTkButton(crop_header, text="Cắt OBJ gốc", command=self.choose_crop_source, width=112, height=32, corner_radius=8, fg_color=PRIMARY, hover_color="#1D4ED8").pack(side=tk.RIGHT)
+        self.crop_list = ctk.CTkFrame(crops, fg_color="transparent")
+        self.crop_list.pack(fill=tk.X, padx=12)
+        self.crop_detail = ctk.CTkFrame(crops, fg_color="transparent")
+        self.crop_detail.pack(fill=tk.X, padx=12, pady=(8, 14))
 
     def launch(self) -> None:
         try:
@@ -529,10 +510,7 @@ class Scanner3DWindow:
         self.auto_status.set(dashboard.auto_pause_message)
         self._refresh_camera_settings(dashboard)
         self.sessions = list(dashboard.sessions)
-        self.tree.delete(*self.tree.get_children())
-        for index, session in enumerate(self.sessions):
-            self.tree.insert("", tk.END, iid=str(index), text=session.path.name,
-                             values=(f"{session.size_bytes / 1024 / 1024:.1f} MB", session.modified_at.isoformat()))
+        self._refresh_session_cards()
         self.refresh_crop_outputs()
         self._refresh_new_scan(dashboard)
 
@@ -577,34 +555,148 @@ class Scanner3DWindow:
 
     def refresh_crop_outputs(self, select_path: Path | None = None) -> None:
         self.cropped_outputs = self.crop_catalog.refresh()
-        self.crop_tree.delete(*self.crop_tree.get_children())
-        selected_id: str | None = None
-        for index, output in enumerate(self.cropped_outputs):
-            identifier = str(index)
-            self.crop_tree.insert(
-                "", tk.END, iid=identifier,
-                values=(
-                    output.path.name,
-                    output.output_dir.name,
-                    f"{output.size_bytes / 1024 / 1024:.1f} MB",
-                    output.modified_at.isoformat(),
-                ),
+        selected = select_path.resolve() if select_path is not None else self.selected_crop_path
+        self.selected_crop_path = preserved_selection(
+            [output.path.resolve() for output in self.cropped_outputs], selected
+        )
+        self._refresh_crop_cards()
+
+    @staticmethod
+    def _clear_children(parent) -> None:
+        for child in parent.winfo_children():
+            child.destroy()
+
+    def _render_card(self, parent, metadata: CardMetadata, *, selected: bool, command) -> None:
+        ctk.CTkButton(
+            parent,
+            text=f"{metadata.title}\n{metadata.subtitle}",
+            command=command,
+            anchor="w",
+            justify="left",
+            height=52,
+            corner_radius=9,
+            border_width=1,
+            border_color="#BFD3FF" if selected else "#DEE5ED",
+            fg_color="#EAF1FF" if selected else "transparent",
+            hover_color="#F1F5F9",
+            text_color="#0F172A",
+            font=("Segoe UI", 12, "bold"),
+        ).pack(fill=tk.X, pady=4)
+
+    def _render_empty_state(self, parent, text: str) -> None:
+        ctk.CTkLabel(parent, text=text, font=("Segoe UI", 13), text_color="#64748B").pack(
+            anchor=tk.W, padx=6, pady=(8, 12)
+        )
+
+    def _refresh_session_cards(self) -> None:
+        self.selected_session_path = preserved_selection(
+            [session.path.resolve() for session in self.sessions], self.selected_session_path
+        )
+        self.session_count.set(f"{len(self.sessions)} phiên")
+        self._clear_children(self.session_list)
+        if not self.sessions:
+            self._render_empty_state(self.session_list, "Chưa có phiên quét đã lưu.")
+        for session in self.sessions:
+            path = session.path.resolve()
+            self._render_card(
+                self.session_list,
+                session_card_metadata(session),
+                selected=path == self.selected_session_path,
+                command=lambda selected_path=path: self._select_session(selected_path),
             )
-            if select_path is not None and output.path == select_path.resolve():
-                selected_id = identifier
-        if selected_id is not None:
-            self.crop_tree.selection_set(selected_id)
-            self.crop_tree.focus(selected_id)
-            self.crop_tree.see(selected_id)
-        self._set_crop_action_state()
+        self._render_session_detail()
 
-    def _on_crop_selection(self, _event=None) -> None:
-        self._set_crop_action_state()
+    def _refresh_crop_cards(self) -> None:
+        self.crop_count.set(f"{len(self.cropped_outputs)} mô hình")
+        self._clear_children(self.crop_list)
+        if not self.cropped_outputs:
+            self._render_empty_state(self.crop_list, "Chưa có mô hình đã cắt.")
+        for output in self.cropped_outputs:
+            path = output.path.resolve()
+            self._render_card(
+                self.crop_list,
+                crop_card_metadata(output),
+                selected=path == self.selected_crop_path,
+                command=lambda selected_path=path: self._select_crop(selected_path),
+            )
+        self._render_crop_detail()
 
-    def _set_crop_action_state(self) -> None:
-        state = tk.NORMAL if selected_crop_path(self.cropped_outputs, self.crop_tree.selection()) else tk.DISABLED
-        self.open_obj_button.configure(state=state)
-        self.open_folder_button.configure(state=state)
+    def _selected_session(self) -> SavedSession | None:
+        return next(
+            (session for session in self.sessions if session.path.resolve() == self.selected_session_path),
+            None,
+        )
+
+    def _selected_crop_output(self) -> CroppedObjOutput | None:
+        return next(
+            (output for output in self.cropped_outputs if output.path.resolve() == self.selected_crop_path),
+            None,
+        )
+
+    def _render_detail(self, parent, metadata: CardMetadata, *, primary_text: str, primary_command, secondary_text: str, secondary_command) -> None:
+        self._clear_children(parent)
+        panel = card(parent)
+        panel.pack(fill=tk.X)
+        ctk.CTkLabel(panel, text="ĐANG CHỌN", font=("Segoe UI", 10, "bold"), text_color="#2563EB").pack(anchor=tk.W, padx=14, pady=(12, 2))
+        ctk.CTkLabel(panel, text=metadata.title, font=("Segoe UI", 14, "bold"), text_color="#0F172A").pack(anchor=tk.W, padx=14)
+        facts = ctk.CTkFrame(panel, fg_color="transparent")
+        facts.pack(fill=tk.X, padx=14, pady=(10, 8))
+        for label, value in metadata.detail:
+            fact = ctk.CTkFrame(facts, fg_color="#F7F9FC", corner_radius=8)
+            fact.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 6))
+            ctk.CTkLabel(fact, text=label.upper(), font=("Segoe UI", 9, "bold"), text_color="#64748B").pack(anchor=tk.W, padx=9, pady=(7, 0))
+            ctk.CTkLabel(fact, text=value, font=("Segoe UI", 11, "bold"), text_color="#0F172A").pack(anchor=tk.W, padx=9, pady=(1, 7))
+        actions = ctk.CTkFrame(panel, fg_color="transparent")
+        actions.pack(fill=tk.X, padx=14, pady=(0, 12))
+        ctk.CTkButton(actions, text=primary_text, command=primary_command, height=34, corner_radius=8, fg_color=PRIMARY, hover_color="#1D4ED8").pack(side=tk.LEFT)
+        ctk.CTkButton(actions, text=secondary_text, command=secondary_command, height=34, corner_radius=8, fg_color="#EAF1FF", hover_color="#DCE8FF", text_color=PRIMARY).pack(side=tk.LEFT, padx=8)
+
+    def _render_session_detail(self) -> None:
+        self._clear_children(self.session_detail)
+        session = self._selected_session()
+        if session is not None:
+            self._render_detail(
+                self.session_detail,
+                session_card_metadata(session),
+                primary_text="Xuất OBJ gốc",
+                primary_command=self.export_selected,
+                secondary_text="Mở thư mục",
+                secondary_command=self.open_selected_session_folder,
+            )
+
+    def _render_crop_detail(self) -> None:
+        self._clear_children(self.crop_detail)
+        output = self._selected_crop_output()
+        if output is not None:
+            self._render_detail(
+                self.crop_detail,
+                crop_card_metadata(output),
+                primary_text="Mở mô hình",
+                primary_command=self.open_latest_cropped_obj,
+                secondary_text="Mở thư mục",
+                secondary_command=self.open_latest_output_folder,
+            )
+        elif self.latest_export_model is not None:
+            ctk.CTkButton(
+                self.crop_detail,
+                text="Mở mô hình đã xuất gần đây",
+                command=self.open_latest_exported_model,
+                height=34,
+                corner_radius=8,
+                fg_color="#EAF1FF",
+                hover_color="#DCE8FF",
+                text_color=PRIMARY,
+            ).pack(anchor=tk.W)
+
+    def _select_session(self, path: Path) -> None:
+        self.selected_session_path = path.resolve()
+        self._refresh_session_cards()
+        self._render_session_detail()
+
+    def _select_crop(self, path: Path) -> None:
+        self.selected_crop_path = path.resolve()
+        self._refresh_crop_cards()
+        self._render_crop_detail()
 
     def _toggle_auto_pause(self) -> None:
         if not self.auto_enabled.get():
@@ -638,11 +730,10 @@ class Scanner3DWindow:
         self.root.after(500, self._poll_runtime)
 
     def export_selected(self) -> None:
-        selected = self.tree.selection()
-        if not selected:
-            messagebox.showinfo("Máy quét 3D", "Hãy chọn cơ sở dữ liệu RTAB-Map đã lưu trước.")
+        session = self._selected_session()
+        if session is None:
+            messagebox.showinfo("Quét 3D", "Hãy chọn phiên RTAB-Map đã lưu trước.")
             return
-        session = self.sessions[int(selected[0])]
         self.status.set("Đang xuất OBJ có texture trong nền...")
         threading.Thread(target=self._export_worker, args=(session,), daemon=True).start()
 
@@ -653,7 +744,7 @@ class Scanner3DWindow:
     def _record_export_result(self, result) -> None:
         if result.error is None and result.viewer_model is not None:
             self.latest_export_model = result.viewer_model
-            self.open_exported_button.configure(state=tk.NORMAL)
+            self._render_crop_detail()
         message = result.error or f"Exported for 3D Viewer: {result.viewer_model or result.obj}"
         self.status.set(message)
 
@@ -827,11 +918,11 @@ class Scanner3DWindow:
         self.status.set(f"Cropped model: {result.viewer_model}")
 
     def open_latest_cropped_obj(self) -> None:
-        path = selected_crop_path(self.cropped_outputs, self.crop_tree.selection())
-        if path is None:
-            self.status.set("Select a cropped OBJ output first")
+        output = self._selected_crop_output()
+        if output is None:
+            self.status.set("Hãy chọn mô hình đã cắt trước.")
             return
-        self.status.set(self.open_actions.open_obj(path).message)
+        self.status.set(self.open_actions.open_obj(output.path).message)
 
     def open_latest_exported_model(self) -> None:
         if self.latest_export_model is None:
@@ -840,11 +931,18 @@ class Scanner3DWindow:
         self.status.set(self.open_actions.open_obj(self.latest_export_model).message)
 
     def open_latest_output_folder(self) -> None:
-        path = selected_crop_path(self.cropped_outputs, self.crop_tree.selection())
-        if path is None:
-            self.status.set("Select a cropped OBJ output first")
+        output = self._selected_crop_output()
+        if output is None:
+            self.status.set("Hãy chọn mô hình đã cắt trước.")
             return
-        self.status.set(self.open_actions.open_folder(path).message)
+        self.status.set(self.open_actions.open_folder(output.path).message)
+
+    def open_selected_session_folder(self) -> None:
+        session = self._selected_session()
+        if session is None:
+            self.status.set("Hãy chọn phiên RTAB-Map đã lưu trước.")
+            return
+        self.status.set(self.open_actions.open_folder(session.path).message)
 
 
 def _read_obj_mesh(path: Path) -> tuple[list[tuple[float, float, float]], list[tuple[int, ...]]]:

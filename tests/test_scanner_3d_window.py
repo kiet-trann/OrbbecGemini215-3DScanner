@@ -37,7 +37,6 @@ from scanner_app.visualization.scanner_3d_window import (
     crop_view_preset,
     preserved_selection,
     session_card_metadata,
-    selected_crop_path,
 )
 
 
@@ -340,17 +339,18 @@ def test_crop_preview_separates_3d_navigation_from_rectangle_selection() -> None
     assert "chuột trái" in layout.crop_instructions
 
 
-def test_selected_crop_path_returns_selected_catalog_output(tmp_path: Path) -> None:
+def test_selected_crop_output_uses_the_path_selected_by_its_card(tmp_path: Path) -> None:
     output = CroppedObjOutput(
         tmp_path / "crop" / "viewer" / "model_cropped.glb",
         tmp_path / "crop" / "viewer",
         12,
         datetime.now(timezone.utc),
     )
+    window = object.__new__(Scanner3DWindow)
+    window.cropped_outputs = [output]
+    window.selected_crop_path = output.path.resolve()
 
-    assert selected_crop_path([output], ("0",)) == output.path
-    assert selected_crop_path([output], ()) is None
-    assert selected_crop_path([output], ("5",)) is None
+    assert window._selected_crop_output() == output
 
 
 def test_session_card_metadata_formats_the_saved_session_for_a_card(tmp_path: Path) -> None:
@@ -389,6 +389,20 @@ def test_preserved_selection_keeps_only_a_path_still_in_the_refreshed_list(tmp_p
     assert preserved_selection([kept], (tmp_path / "missing.db").resolve()) is None
 
 
+def test_select_session_rerenders_the_card_list_and_its_detail(tmp_path: Path) -> None:
+    path = (tmp_path / "scan.db").resolve()
+    window = object.__new__(Scanner3DWindow)
+    window.selected_session_path = None
+    rendered: list[str] = []
+    window._refresh_session_cards = lambda: rendered.append("list")
+    window._render_session_detail = lambda: rendered.append("detail")
+
+    window._select_session(path)
+
+    assert window.selected_session_path == path
+    assert rendered == ["list", "detail"]
+
+
 def test_record_crop_result_selects_compatible_obj(tmp_path: Path) -> None:
     selected: list[Path] = []
 
@@ -415,7 +429,7 @@ def test_record_crop_result_selects_compatible_obj(tmp_path: Path) -> None:
 
 
 def test_record_export_result_enables_opening_the_viewer_model(tmp_path: Path) -> None:
-    configured: list[str] = []
+    rendered: list[None] = []
 
     class Status:
         def __init__(self) -> None:
@@ -424,21 +438,17 @@ def test_record_export_result_enables_opening_the_viewer_model(tmp_path: Path) -
         def set(self, value: str) -> None:
             self.value = value
 
-    class Button:
-        def configure(self, *, state: str) -> None:
-            configured.append(state)
-
     viewer_model = tmp_path / "viewer" / "scan.glb"
     result = ExportResult(tmp_path, tmp_path / "raw.obj", tmp_path / "raw.mtl", (), viewer_model, tmp_path / "log", None)
     window = object.__new__(Scanner3DWindow)
     window.status = Status()
-    window.open_exported_button = Button()
+    window._render_crop_detail = lambda: rendered.append(None)
     window.latest_export_model = None
 
     window._record_export_result(result)
 
     assert window.latest_export_model == viewer_model
-    assert configured == [tk.NORMAL]
+    assert rendered == [None]
     assert window.status.value == f"Exported for 3D Viewer: {viewer_model}"
 
 
