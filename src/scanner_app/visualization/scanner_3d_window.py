@@ -478,8 +478,8 @@ class Scanner3DWindow:
     def refresh(self) -> None:
         dashboard = self.controller.refresh()
         self.runtime_was_running = dashboard.camera_controls_locked
-        self.status.set(dashboard.runtime_message)
         status = dashboard_status(dashboard.runtime_message)
+        self.status.set(status.label)
         self.status_chip.configure(
             text=status.label,
             fg_color={"ready": "#DCFCE7", "error": "#FEE2E2", "neutral": "#E8EEF7"}[status.tone],
