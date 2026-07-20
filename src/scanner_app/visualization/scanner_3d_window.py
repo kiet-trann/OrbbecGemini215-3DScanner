@@ -462,37 +462,26 @@ class Scanner3DWindow:
             ctk.CTkButton(item, text=value, fg_color="transparent", hover_color="#EEF3F8", text_color="#0F172A", anchor="w", command=lambda route=page: self.show_page(route)).pack(fill=tk.X, padx=8, pady=(0, 10))
 
     def _build_camera_page(self, parent: ttk.Frame) -> None:
-        ttk.Label(parent, text="Thiết lập camera", font=("Segoe UI", 16, "bold")).pack(anchor=tk.W)
-        camera_setup = ttk.LabelFrame(parent, text="Cấu hình quét", padding=14, style="Dashboard.TLabelframe")
-        camera_setup.pack(fill=tk.X, pady=(8, 10))
-        profile_controls = ttk.Frame(camera_setup)
-        profile_controls.pack(fill=tk.X)
-        ttk.Label(profile_controls, text="Cấu hình:").pack(side=tk.LEFT)
-        self.camera_profile_combo = ttk.Combobox(
-            profile_controls,
-            textvariable=self.camera_profile_value,
-            values=tuple(profile.display_name for profile in CameraProfile),
-            state="readonly",
-            width=28,
-        )
-        self.camera_profile_combo.pack(side=tk.LEFT, padx=(6, 8))
-        self.camera_profile_combo.bind("<<ComboboxSelected>>", self._select_camera_profile)
-        self.inspect_camera_button = ttk.Button(
-            profile_controls, text="Kiểm tra thiết bị", command=self.inspect_camera
-        )
-        self.inspect_camera_button.pack(side=tk.LEFT, padx=(0, 6))
-        self.apply_camera_button = ttk.Button(
-            profile_controls, text="Áp dụng & mở RTAB-Map", command=self.launch
-        )
-        self.apply_camera_button.pack(side=tk.LEFT)
-        self.camera_settings_tree = ttk.Treeview(
-            camera_setup, columns=("value",), show="tree headings", height=8, style="Dashboard.Treeview"
-        )
-        self.camera_settings_tree.heading("#0", text="Thông số")
-        self.camera_settings_tree.heading("value", text="Giá trị hiện tại")
-        self.camera_settings_tree.column("#0", width=190)
-        self.camera_settings_tree.column("value", width=510)
-        self.camera_settings_tree.pack(fill=tk.X, pady=(8, 0))
+        ctk.CTkLabel(parent, text="Camera", font=("Segoe UI", 18, "bold"), text_color="#0F172A").pack(anchor=tk.W)
+        ctk.CTkLabel(
+            parent,
+            text="Chọn cấu hình quét, kiểm tra thiết bị rồi bắt đầu phiên RTAB-Map.",
+            font=("Segoe UI", 13),
+            text_color="#64748B",
+        ).pack(anchor=tk.W, pady=(3, 14))
+        top_row = ctk.CTkFrame(parent, fg_color="transparent")
+        top_row.pack(fill=tk.X, pady=(0, 14))
+        profile_panel = card(top_row)
+        profile_panel.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(0, 7))
+        device_panel = card(top_row)
+        device_panel.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(7, 0))
+        self.camera_profile_host = ctk.CTkFrame(profile_panel, fg_color="transparent")
+        self.camera_profile_host.pack(fill=tk.BOTH, expand=True, padx=16, pady=16)
+        self.camera_device_host = ctk.CTkFrame(device_panel, fg_color="transparent")
+        self.camera_device_host.pack(fill=tk.BOTH, expand=True, padx=16, pady=16)
+        self.camera_fact_groups = ctk.CTkFrame(parent, fg_color="transparent")
+        self.camera_fact_groups.pack(fill=tk.X)
+        self.camera_profile_buttons: dict[CameraProfile, ctk.CTkButton] = {}
 
     def _build_advanced_page(self, parent: ttk.Frame) -> None:
         ttk.Label(parent, text="Công cụ nâng cao", font=("Segoe UI", 16, "bold")).pack(anchor=tk.W)
@@ -559,12 +548,7 @@ class Scanner3DWindow:
         self.refresh()
         self.status.set(dashboard_status(message).label)
 
-    def _select_camera_profile(self, _event=None) -> None:
-        profile = next(
-            candidate
-            for candidate in CameraProfile
-            if candidate.display_name == self.camera_profile_value.get()
-        )
+    def _select_camera_profile(self, profile: CameraProfile) -> None:
         try:
             self.controller.set_camera_profile(profile)
             message = f"Đã chọn cấu hình camera: {profile.display_name}"
@@ -584,7 +568,7 @@ class Scanner3DWindow:
             text_color={"ready": "#166534", "error": "#991B1B", "neutral": "#1E3A5F"}[status.tone],
         )
         self.auto_status.set(dashboard.auto_pause_message)
-        self._refresh_camera_settings(dashboard)
+        self._render_camera_dashboard(dashboard)
         self.sessions = list(dashboard.sessions)
         self._refresh_session_cards()
         self.refresh_crop_outputs()
@@ -615,19 +599,104 @@ class Scanner3DWindow:
         results_text = "Mở phiên & kết quả" if workflow.results_ready else "Chưa có phiên để xuất"
         self.new_scan_results_button.configure(text=results_text)
 
-    def _refresh_camera_settings(self, dashboard: DashboardState) -> None:
-        self.camera_profile_value.set(dashboard.camera_profile.display_name)
-        self.camera_profile_combo.configure(
-            state="disabled" if dashboard.camera_controls_locked else "readonly"
+    def _render_camera_dashboard(self, dashboard: DashboardState) -> None:
+        profiles, device, groups = camera_dashboard_cards(
+            dashboard.camera_profile, dashboard.camera_snapshot
         )
         state = camera_control_state(dashboard.camera_controls_locked)
-        self.inspect_camera_button.configure(state=state)
-        self.apply_camera_button.configure(state=state)
-        self.camera_settings_tree.delete(*self.camera_settings_tree.get_children())
-        for index, (setting, value) in enumerate(
-            camera_settings_rows(dashboard.camera_profile, dashboard.camera_snapshot)
-        ):
-            self.camera_settings_tree.insert("", tk.END, iid=str(index), text=setting, values=(value,))
+        self._clear_children(self.camera_profile_host)
+        self.camera_profile_buttons = {}
+        ctk.CTkLabel(
+            self.camera_profile_host,
+            text="CẤU HÌNH QUÉT",
+            font=("Segoe UI", 10, "bold"),
+            text_color="#64748B",
+        ).pack(anchor=tk.W)
+        ctk.CTkLabel(
+            self.camera_profile_host,
+            text="Chọn phạm vi làm việc",
+            font=("Segoe UI", 16, "bold"),
+            text_color="#0F172A",
+        ).pack(anchor=tk.W, pady=(2, 1))
+        ctk.CTkLabel(
+            self.camera_profile_host,
+            text="Profile áp dụng sẵn thông số phù hợp khoảng cách quét.",
+            font=("Segoe UI", 12),
+            text_color="#64748B",
+        ).pack(anchor=tk.W, pady=(0, 10))
+        profiles_host = ctk.CTkFrame(self.camera_profile_host, fg_color="transparent")
+        profiles_host.pack(fill=tk.X)
+        for index, profile_card in enumerate(profiles):
+            button = ctk.CTkButton(
+                profiles_host,
+                text=f"{profile_card.label}\n{profile_card.range_label}",
+                command=lambda selected=profile_card.profile: self._select_camera_profile(selected),
+                state=state,
+                anchor="w",
+                height=48,
+                corner_radius=9,
+                border_width=1,
+                border_color="#BFD3FF" if profile_card.selected else "#DEE5ED",
+                fg_color="#EAF1FF" if profile_card.selected else "transparent",
+                hover_color="#F1F5F9",
+                text_color="#0F172A",
+                font=("Segoe UI", 11, "bold"),
+            )
+            button.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 6) if index < len(profiles) - 1 else 0)
+            self.camera_profile_buttons[profile_card.profile] = button
+        actions = ctk.CTkFrame(self.camera_profile_host, fg_color="transparent")
+        actions.pack(fill=tk.X, pady=(14, 0))
+        self.inspect_camera_button = ctk.CTkButton(
+            actions,
+            text="Kiểm tra thiết bị",
+            command=self.inspect_camera,
+            state=state,
+            height=36,
+            corner_radius=8,
+            fg_color="#EAF1FF",
+            hover_color="#DCE8FF",
+            text_color=PRIMARY,
+        )
+        self.inspect_camera_button.pack(side=tk.LEFT)
+        self.apply_camera_button = ctk.CTkButton(
+            actions,
+            text="Áp dụng & mở RTAB-Map",
+            command=self.launch,
+            state=state,
+            height=36,
+            corner_radius=8,
+            fg_color=PRIMARY,
+            hover_color="#1D4ED8",
+        )
+        self.apply_camera_button.pack(side=tk.LEFT, padx=8)
+
+        self._clear_children(self.camera_device_host)
+        ctk.CTkLabel(self.camera_device_host, text="THIẾT BỊ ĐANG KẾT NỐI", font=("Segoe UI", 10, "bold"), text_color="#64748B").pack(anchor=tk.W)
+        device_row = ctk.CTkFrame(self.camera_device_host, fg_color="transparent")
+        device_row.pack(fill=tk.X, pady=(12, 8))
+        ctk.CTkLabel(device_row, text="◉", width=42, height=42, corner_radius=11, fg_color="#EAF1FF", text_color=PRIMARY, font=("Segoe UI", 20, "bold")).pack(side=tk.LEFT)
+        device_copy = ctk.CTkFrame(device_row, fg_color="transparent")
+        device_copy.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=10)
+        ctk.CTkLabel(device_copy, text=device.title, font=("Segoe UI", 15, "bold"), text_color="#0F172A").pack(anchor=tk.W)
+        ctk.CTkLabel(device_copy, text=device.subtitle, font=("Segoe UI", 11), text_color="#64748B", wraplength=300, justify="left").pack(anchor=tk.W, pady=(2, 0))
+        ctk.CTkLabel(self.camera_device_host, text="TRẠNG THÁI KIỂM TRA", font=("Segoe UI", 10, "bold"), text_color="#64748B").pack(anchor=tk.W, pady=(8, 2))
+        ctk.CTkLabel(self.camera_device_host, text=device.inspection_label, font=("Segoe UI", 12), text_color="#475569", wraplength=330, justify="left").pack(anchor=tk.W)
+
+        self._clear_children(self.camera_fact_groups)
+        for group in groups:
+            group_card = card(self.camera_fact_groups)
+            group_card.pack(fill=tk.X, pady=(0, 12))
+            header = ctk.CTkFrame(group_card, fg_color="transparent")
+            header.pack(fill=tk.X, padx=18, pady=(14, 10))
+            ctk.CTkLabel(header, text=group.title.upper(), font=("Segoe UI", 10, "bold"), text_color="#64748B").pack(anchor=tk.W)
+            ctk.CTkLabel(header, text=group.subtitle, font=("Segoe UI", 15, "bold"), text_color="#0F172A").pack(anchor=tk.W, pady=(1, 0))
+            facts = ctk.CTkFrame(group_card, fg_color="transparent")
+            facts.pack(fill=tk.X, padx=12, pady=(0, 14))
+            for index, (label, value) in enumerate(group.facts):
+                fact = ctk.CTkFrame(facts, fg_color="#F7F9FC", corner_radius=8)
+                fact.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 6) if index < len(group.facts) - 1 else 0)
+                ctk.CTkLabel(fact, text=label.upper(), font=("Segoe UI", 9, "bold"), text_color="#64748B").pack(anchor=tk.W, padx=10, pady=(8, 0))
+                ctk.CTkLabel(fact, text=value, font=("Segoe UI", 11, "bold"), text_color="#0F172A", wraplength=185, justify="left").pack(anchor=tk.W, padx=10, pady=(2, 8))
 
     def refresh_crop_outputs(self, select_path: Path | None = None) -> None:
         self.cropped_outputs = self.crop_catalog.refresh()
