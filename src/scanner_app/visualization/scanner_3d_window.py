@@ -446,6 +446,17 @@ class Scanner3DWindow:
             self.tree.insert("", tk.END, iid=str(index), text=session.path.name,
                              values=(f"{session.size_bytes / 1024 / 1024:.1f} MB", session.modified_at.isoformat()))
         self.refresh_crop_outputs()
+        self._refresh_dashboard_summary(dashboard)
+
+    def _refresh_dashboard_summary(self, dashboard: DashboardState) -> None:
+        self.dashboard_runtime_value.set(dashboard.runtime_message)
+        self.dashboard_camera_value.set(dashboard.camera_profile.display_name)
+        count = len(self.sessions)
+        suffix = "session" if count == 1 else "sessions"
+        self.dashboard_session_value.set(f"{count} saved {suffix}")
+        self.dashboard_export_value.set(
+            self.latest_export_model.name if self.latest_export_model is not None else "No exported model"
+        )
 
     def _refresh_camera_settings(self, dashboard: DashboardState) -> None:
         self.camera_profile_value.set(dashboard.camera_profile.display_name)
