@@ -185,6 +185,27 @@ def test_camera_dashboard_keeps_orbbec_sdk_terms_after_inspection() -> None:
     assert ("Enabled depth filters", "TemporalFilter") in groups[1].facts
 
 
+def test_select_camera_profile_rerenders_after_a_successful_change() -> None:
+    class Controller:
+        def set_camera_profile(self, profile: CameraProfile) -> None:
+            self.profile = profile
+
+    class Status:
+        def set(self, _value: str) -> None:
+            pass
+
+    rendered: list[str] = []
+    window = object.__new__(Scanner3DWindow)
+    window.controller = Controller()
+    window.refresh = lambda: rendered.append("dashboard")
+    window.status = Status()
+
+    window._select_camera_profile(CameraProfile.FAR)
+
+    assert window.controller.profile is CameraProfile.FAR
+    assert rendered == ["dashboard"]
+
+
 class FakePageFrame:
     def __init__(self) -> None:
         self.grid_calls = 0
