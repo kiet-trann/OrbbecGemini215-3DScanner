@@ -24,7 +24,9 @@ from scanner_app.camera.models import CameraProfile, CameraSettingsSnapshot, Cap
 from scanner_app.visualization.crop_catalog import CroppedObjOutput
 from scanner_app.visualization.dashboard_theme import PRIMARY
 from scanner_app.visualization.navigation import DashboardPage
+from scanner_app.visualization import scanner_3d_window as scanner_window_module
 from scanner_app.visualization.scanner_3d_window import (
+    CardMetadata,
     DashboardState,
     Scanner3DController,
     Scanner3DWindow,
@@ -401,6 +403,29 @@ def test_select_session_rerenders_the_card_list_and_its_detail(tmp_path: Path) -
 
     assert window.selected_session_path == path
     assert rendered == ["list", "detail"]
+
+
+def test_card_button_uses_only_supported_customtkinter_options(monkeypatch) -> None:
+    buttons: list[dict[str, object]] = []
+
+    class Button:
+        def __init__(self, _parent, **kwargs) -> None:
+            buttons.append(kwargs)
+
+        def pack(self, **_kwargs) -> None:
+            pass
+
+    monkeypatch.setattr(scanner_window_module.ctk, "CTkButton", Button)
+    window = object.__new__(Scanner3DWindow)
+
+    window._render_card(
+        object(),
+        CardMetadata("scan.db", "20/07/2026 · 09:31 · 1,5 MB", ()),
+        selected=False,
+        command=lambda: None,
+    )
+
+    assert "justify" not in buttons[0]
 
 
 def test_record_crop_result_selects_compatible_obj(tmp_path: Path) -> None:
