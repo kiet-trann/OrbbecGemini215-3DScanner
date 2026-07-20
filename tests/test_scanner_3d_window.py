@@ -173,28 +173,28 @@ class FakeSidebarButton:
 
 
 def test_show_page_only_changes_visible_page_and_sidebar_style() -> None:
-    overview = FakePageFrame()
+    new_scan = FakePageFrame()
     camera = FakePageFrame()
-    overview_button = FakeSidebarButton()
+    new_scan_button = FakeSidebarButton()
     camera_button = FakeSidebarButton()
     window = object.__new__(Scanner3DWindow)
-    window.page_frames = {DashboardPage.OVERVIEW: overview, DashboardPage.CAMERA: camera}
+    window.page_frames = {DashboardPage.NEW_SCAN: new_scan, DashboardPage.CAMERA: camera}
     window.sidebar_buttons = {
-        DashboardPage.OVERVIEW: overview_button,
+        DashboardPage.NEW_SCAN: new_scan_button,
         DashboardPage.CAMERA: camera_button,
     }
-    window.active_page = DashboardPage.OVERVIEW
+    window.active_page = DashboardPage.NEW_SCAN
 
     window.show_page(DashboardPage.CAMERA)
 
     assert window.active_page is DashboardPage.CAMERA
-    assert overview.remove_calls == 1
+    assert new_scan.remove_calls == 1
     assert camera.grid_calls == 1
-    assert overview_button.styles == ["Sidebar.TButton"]
+    assert new_scan_button.styles == ["Sidebar.TButton"]
     assert camera_button.styles == ["Sidebar.Active.TButton"]
 
 
-def test_refresh_dashboard_summary_uses_existing_dashboard_and_output_state(tmp_path: Path) -> None:
+def test_refresh_new_scan_uses_existing_dashboard_state_for_the_primary_action() -> None:
     class Value:
         def __init__(self) -> None:
             self.value = ""
@@ -202,30 +202,37 @@ def test_refresh_dashboard_summary_uses_existing_dashboard_and_output_state(tmp_
         def set(self, value: str) -> None:
             self.value = value
 
+    class Button:
+        def __init__(self) -> None:
+            self.text = ""
+            self.command = None
+
+        def configure(self, *, text: str, command=None) -> None:
+            self.text = text
+            self.command = command
+
     window = object.__new__(Scanner3DWindow)
-    window.dashboard_runtime_value = Value()
-    window.dashboard_camera_value = Value()
-    window.dashboard_session_value = Value()
-    window.dashboard_export_value = Value()
-    window.sessions = [SavedSession(tmp_path / "scan.db", 1, modified_at=None)]  # type: ignore[arg-type]
-    window.latest_export_model = tmp_path / "viewer" / "scan.glb"
+    window.new_scan_heading = Value()
+    window.new_scan_detail = Value()
+    window.new_scan_primary_button = Button()
+    window.new_scan_results_button = Button()
+    window.sessions = []
     dashboard = DashboardState(
-        runtime_message="RTAB-Map is running",
+        runtime_message="RTAB-Map is not running",
         auto_pause_available=True,
         auto_pause_message="Auto-pause ready",
-        sessions=tuple(window.sessions),
+        sessions=(),
         busy=False,
         camera_profile=CameraProfile.NEAR,
-        camera_snapshot=make_snapshot(),
-        camera_controls_locked=True,
+        camera_snapshot=None,
+        camera_controls_locked=False,
     )
 
-    window._refresh_dashboard_summary(dashboard)
+    window._refresh_new_scan(dashboard)
 
-    assert window.dashboard_runtime_value.value == "RTAB-Map is running"
-    assert window.dashboard_camera_value.value == CameraProfile.NEAR.display_name
-    assert window.dashboard_session_value.value == "1 saved session"
-    assert window.dashboard_export_value.value == "scan.glb"
+    assert window.new_scan_heading.value == "Bước 1 / 3 · Chuẩn bị camera"
+    assert window.new_scan_primary_button.text == "Kiểm tra camera"
+    assert window.new_scan_results_button.text == "Chưa có phiên để xuất"
 
 
 def test_launch_keeps_preflight_error_visible_after_refresh() -> None:
