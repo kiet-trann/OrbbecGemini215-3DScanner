@@ -24,6 +24,7 @@ from scanner_app.camera.models import CameraProfile, CameraSettingsSnapshot, Cap
 from scanner_app.visualization.crop_catalog import CroppedObjOutput
 from scanner_app.visualization.navigation import DashboardPage
 from scanner_app.visualization.scanner_3d_window import (
+    DashboardState,
     Scanner3DController,
     Scanner3DWindow,
     camera_control_state,
@@ -202,6 +203,40 @@ def test_show_page_ignores_the_reserved_settings_page() -> None:
     window.show_page(DashboardPage.SETTINGS)
 
     assert window.active_page is DashboardPage.OVERVIEW
+
+
+def test_refresh_dashboard_summary_uses_existing_dashboard_and_output_state(tmp_path: Path) -> None:
+    class Value:
+        def __init__(self) -> None:
+            self.value = ""
+
+        def set(self, value: str) -> None:
+            self.value = value
+
+    window = object.__new__(Scanner3DWindow)
+    window.dashboard_runtime_value = Value()
+    window.dashboard_camera_value = Value()
+    window.dashboard_session_value = Value()
+    window.dashboard_export_value = Value()
+    window.sessions = [SavedSession(tmp_path / "scan.db", 1, modified_at=None)]  # type: ignore[arg-type]
+    window.latest_export_model = tmp_path / "viewer" / "scan.glb"
+    dashboard = DashboardState(
+        runtime_message="RTAB-Map is running",
+        auto_pause_available=True,
+        auto_pause_message="Auto-pause ready",
+        sessions=tuple(window.sessions),
+        busy=False,
+        camera_profile=CameraProfile.NEAR,
+        camera_snapshot=make_snapshot(),
+        camera_controls_locked=True,
+    )
+
+    window._refresh_dashboard_summary(dashboard)
+
+    assert window.dashboard_runtime_value.value == "RTAB-Map is running"
+    assert window.dashboard_camera_value.value == CameraProfile.NEAR.display_name
+    assert window.dashboard_session_value.value == "1 saved session"
+    assert window.dashboard_export_value.value == "scan.glb"
 
 
 def test_launch_keeps_preflight_error_visible_after_refresh() -> None:
