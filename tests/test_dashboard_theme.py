@@ -29,3 +29,11 @@ def test_dashboard_status_uses_neutral_copy_when_runtime_is_idle() -> None:
 
     assert status.label == "Sẵn sàng chuẩn bị"
     assert status.tone == "neutral"
+
+
+def test_dashboard_status_translates_runtime_and_bridge_messages() -> None:
+    assert dashboard_status("RTAB-Map started").label == "RTAB-Map đã khởi động"
+    assert dashboard_status("RTAB-Map is already running").label == "RTAB-Map đang chạy"
+    assert dashboard_status("Pause sent").label == "Đã gửi lệnh tạm dừng"
+    assert dashboard_status("Resume sent").label == "Đã gửi lệnh tiếp tục"
+    assert dashboard_status("RTAB-Map window was not found").label == "Không tìm thấy cửa sổ RTAB-Map"

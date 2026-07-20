@@ -450,7 +450,7 @@ class Scanner3DWindow:
         except (CameraPreflightError, RuntimeError) as error:
             message = str(error)
         self.refresh()
-        self.status.set(message)
+        self.status.set(dashboard_status(message).label)
 
     def inspect_camera(self) -> None:
         try:
@@ -459,7 +459,7 @@ class Scanner3DWindow:
         except (CameraPreflightError, RuntimeError) as error:
             message = str(error)
         self.refresh()
-        self.status.set(message)
+        self.status.set(dashboard_status(message).label)
 
     def _select_camera_profile(self, _event=None) -> None:
         profile = next(
@@ -473,7 +473,7 @@ class Scanner3DWindow:
         except RuntimeError as error:
             message = str(error)
         self.refresh()
-        self.status.set(message)
+        self.status.set(dashboard_status(message).label)
 
     def refresh(self) -> None:
         dashboard = self.controller.refresh()
@@ -587,7 +587,7 @@ class Scanner3DWindow:
 
     def _bridge_action(self, action) -> None:
         result = action()
-        self.status.set(result.message)
+        self.status.set(dashboard_status(result.message).label)
 
     def _poll_runtime(self) -> None:
         running = self.controller.runtime_running()

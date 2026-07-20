@@ -16,6 +16,16 @@ class DashboardStatus:
 
 
 def dashboard_status(message: str) -> DashboardStatus:
+    translations = {
+        "RTAB-Map started": "RTAB-Map đã khởi động",
+        "RTAB-Map is already running": "RTAB-Map đang chạy",
+        "Pause sent": "Đã gửi lệnh tạm dừng",
+        "Resume sent": "Đã gửi lệnh tiếp tục",
+        "RTAB-Map window was not found": "Không tìm thấy cửa sổ RTAB-Map",
+        "RTAB-Map window is ambiguous": "Có nhiều cửa sổ RTAB-Map",
+    }
+    if message in translations:
+        return DashboardStatus(translations[message], "neutral")
     if "No Orbbec camera" in message or "failed" in message.lower() or "error" in message.lower():
         return DashboardStatus(message, "error")
     if message == "RTAB-Map is running":
