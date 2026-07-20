@@ -115,10 +115,10 @@ class CropPreviewLayout:
 
 def crop_preview_layout() -> CropPreviewLayout:
     return CropPreviewLayout(
-        view_title="3D model view",
-        crop_title="Crop here",
-        view_instructions="Right-drag to rotate - wheel to zoom",
-        crop_instructions="Left-drag one rectangle around the part to keep",
+        view_title="Xem mô hình 3D",
+        crop_title="Vùng cắt",
+        view_instructions="Kéo chuột phải để xoay - lăn chuột để phóng to",
+        crop_instructions="Kéo chuột trái một khung quanh phần cần giữ lại",
     )
 
 
@@ -160,13 +160,13 @@ class Scanner3DController:
     def refresh(self) -> DashboardState:
         state = self._monitor.state
         if state is AutoPauseState.UNCERTAIN:
-            message = "Auto-pause unavailable: activity signal is uncertain"
+            message = "Tự dừng không khả dụng: tín hiệu hoạt động không chắc chắn"
             available = False
         elif state is AutoPauseState.PAUSED:
-            message = "Auto-pause paused RTAB-Map; review the model"
+            message = "Tự dừng đã tạm dừng RTAB-Map; hãy kiểm tra mô hình"
             available = True
         else:
-            message = "Auto-pause ready (experimental)"
+            message = "Tự dừng sẵn sàng (thử nghiệm)"
             available = True
         runtime_status = self._runtime.status()
         return DashboardState(
@@ -455,7 +455,7 @@ class Scanner3DWindow:
     def inspect_camera(self) -> None:
         try:
             self.controller.inspect_camera()
-            message = "Camera settings inspected"
+            message = "Đã kiểm tra thông số camera"
         except (CameraPreflightError, RuntimeError) as error:
             message = str(error)
         self.refresh()
@@ -469,7 +469,7 @@ class Scanner3DWindow:
         )
         try:
             self.controller.set_camera_profile(profile)
-            message = f"Camera profile selected: {profile.display_name}"
+            message = f"Đã chọn cấu hình camera: {profile.display_name}"
         except RuntimeError as error:
             message = str(error)
         self.refresh()
@@ -567,20 +567,20 @@ class Scanner3DWindow:
 
     def _toggle_auto_pause(self) -> None:
         if not self.auto_enabled.get():
-            self.auto_status.set("Auto-pause is off")
+            self.auto_status.set("Tự dừng đang tắt")
         else:
-            self.auto_status.set("Auto-pause warming up: waiting for RTAB-Map activity")
+            self.auto_status.set("Tự dừng đang khởi tạo: chờ hoạt động từ RTAB-Map")
 
     def _poll_auto_pause(self) -> None:
         if self.auto_enabled.get():
             state = self.monitor.observe(self.probe.observe())
             self.auto_status.set({
-                AutoPauseState.WARMING_UP: "Auto-pause warming up: move camera to create map nodes",
-                AutoPauseState.ACTIVE: "Auto-pause armed: pauses after 3 seconds without new nodes",
-                AutoPauseState.COUNTDOWN: "Auto-pause countdown",
-                AutoPauseState.PAUSED: "Auto-pause paused RTAB-Map; review the model",
-                AutoPauseState.UNCERTAIN: "Auto-pause unavailable: activity signal is uncertain",
-            }.get(state, "Auto-pause is off"))
+                AutoPauseState.WARMING_UP: "Tự dừng đang khởi tạo: di chuyển camera để tạo điểm bản đồ",
+                AutoPauseState.ACTIVE: "Tự dừng đã sẵn sàng: tạm dừng sau 3 giây không có điểm mới",
+                AutoPauseState.COUNTDOWN: "Tự dừng đang đếm ngược",
+                AutoPauseState.PAUSED: "Tự dừng đã tạm dừng RTAB-Map; hãy kiểm tra mô hình",
+                AutoPauseState.UNCERTAIN: "Tự dừng không khả dụng: tín hiệu hoạt động không chắc chắn",
+            }.get(state, "Tự dừng đang tắt"))
             if state is AutoPauseState.UNCERTAIN:
                 self.auto_enabled.set(False)
         self.root.after(250, self._poll_auto_pause)
@@ -599,10 +599,10 @@ class Scanner3DWindow:
     def export_selected(self) -> None:
         selected = self.tree.selection()
         if not selected:
-            messagebox.showinfo("3D Scanner", "Select a saved RTAB-Map database first.")
+            messagebox.showinfo("Máy quét 3D", "Hãy chọn cơ sở dữ liệu RTAB-Map đã lưu trước.")
             return
         session = self.sessions[int(selected[0])]
-        self.status.set("Exporting textured OBJ in the background...")
+        self.status.set("Đang xuất OBJ có texture trong nền...")
         threading.Thread(target=self._export_worker, args=(session,), daemon=True).start()
 
     def _export_worker(self, session: SavedSession) -> None:
@@ -619,9 +619,9 @@ class Scanner3DWindow:
     def choose_crop_source(self) -> None:
         selected = filedialog.askopenfilename(
             parent=self.root,
-            title="Choose raw OBJ to crop",
+            title="Chọn OBJ gốc để cắt",
             initialdir=self.output_root,
-            filetypes=[("Wavefront OBJ", "*.obj")],
+            filetypes=[("Tệp Wavefront OBJ", "*.obj")],
         )
         if selected:
             self._show_crop_preview(Path(selected))
@@ -629,16 +629,16 @@ class Scanner3DWindow:
     def _show_crop_preview(self, source_obj: Path) -> None:
         vertices, faces = _read_obj_mesh(source_obj)
         if not vertices:
-            messagebox.showerror("3D Scanner", "The OBJ contains no vertices.")
+            messagebox.showerror("Máy quét 3D", "Tệp OBJ không có đỉnh hình học.")
             return
         width, height = 520, 430
         dialog = tk.Toplevel(self.root)
         layout = crop_preview_layout()
-        dialog.title(f"Crop preview — {source_obj.name}")
-        ttk.Label(dialog, text="Right-drag to rotate · wheel to zoom · left-drag one crop rectangle.").pack(padx=10, pady=(10, 4))
+        dialog.title(f"Xem trước vùng cắt — {source_obj.name}")
+        ttk.Label(dialog, text="Kéo chuột phải để xoay · lăn chuột để phóng to · kéo chuột trái để vẽ vùng cắt.").pack(padx=10, pady=(10, 4))
         ttk.Label(
             dialog,
-            text="Use the left model to choose the angle. Drag the rectangle only in the right panel.",
+            text="Dùng mô hình bên trái để chọn góc nhìn. Chỉ kéo khung ở vùng bên phải.",
         ).pack(padx=10, pady=(0, 4))
         panels = ttk.Frame(dialog)
         panels.pack(padx=10, pady=6)
@@ -751,12 +751,12 @@ class Scanner3DWindow:
 
         def create_crop() -> None:
             if state["item"] is None:
-                messagebox.showinfo("3D Scanner", "Drag a rectangle around the object first.", parent=dialog)
+                messagebox.showinfo("Máy quét 3D", "Hãy kéo một khung quanh đối tượng trước.", parent=dialog)
                 return
             x1, y1, x2, y2 = canvas.coords(state["item"])
             rectangle = CropRectangle(min(x1, x2), min(y1, y2), max(x1, x2), max(y1, y2))
             output_dir = source_obj.parent.parent / f"cropped_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
-            self.status.set("Creating cropped OBJ in the background...")
+            self.status.set("Đang tạo OBJ đã cắt trong nền...")
             threading.Thread(target=self._crop_worker, args=(source_obj, rectangle, state["projection"], output_dir), daemon=True).start()
             dialog.destroy()
 
@@ -769,9 +769,9 @@ class Scanner3DWindow:
         view_canvas.bind("<MouseWheel>", zoom)
         view_controls = ttk.Frame(dialog)
         view_controls.pack(pady=(0, 6))
-        for name, label in (("reset", "Reset"), ("front", "Front"), ("back", "Back"), ("top", "Top"), ("bottom", "Bottom")):
+        for name, label in (("reset", "Đặt lại"), ("front", "Trước"), ("back", "Sau"), ("top", "Trên"), ("bottom", "Dưới")):
             ttk.Button(view_controls, text=label, command=lambda value=name: apply_preset(value)).pack(side=tk.LEFT, padx=3)
-        ttk.Button(dialog, text="Create cropped OBJ", command=create_crop).pack(pady=(0, 10))
+        ttk.Button(dialog, text="Tạo OBJ đã cắt", command=create_crop).pack(pady=(0, 10))
 
     def _crop_worker(self, source: Path, rectangle: CropRectangle, projection, output_dir: Path) -> None:
         try:
