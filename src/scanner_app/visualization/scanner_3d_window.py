@@ -572,7 +572,6 @@ class Scanner3DWindow:
             text=f"{metadata.title}\n{metadata.subtitle}",
             command=command,
             anchor="w",
-            justify="left",
             height=52,
             corner_radius=9,
             border_width=1,
