@@ -183,6 +183,9 @@ class Scanner3DController:
     def launch(self) -> RuntimeStatus:
         return self.apply_and_launch()
 
+    def runtime_running(self) -> bool:
+        return self._runtime.status().running
+
     def set_camera_profile(self, profile: CameraProfile) -> None:
         self._assert_camera_controls_unlocked()
         self._camera_profile = profile
@@ -231,6 +234,7 @@ class Scanner3DWindow:
         self.cropped_outputs: list[CroppedObjOutput] = []
         self.open_actions = OpenActionService()
         self.latest_export_model: Path | None = None
+        self.runtime_was_running = False
         self.active_page = default_page()
         self.page_frames: dict[DashboardPage, ttk.Frame] = {}
         self.sidebar_buttons: dict[DashboardPage, ttk.Button] = {}
@@ -240,6 +244,7 @@ class Scanner3DWindow:
         self._build()
         self.refresh()
         self._poll_auto_pause()
+        self._poll_runtime()
 
     def _build(self) -> None:
         configure_dashboard_theme(self.root)
@@ -473,6 +478,7 @@ class Scanner3DWindow:
 
     def refresh(self) -> None:
         dashboard = self.controller.refresh()
+        self.runtime_was_running = dashboard.camera_controls_locked
         self.status.set(dashboard.runtime_message)
         status = dashboard_status(dashboard.runtime_message)
         self.status_chip.configure(
@@ -583,6 +589,13 @@ class Scanner3DWindow:
     def _bridge_action(self, action) -> None:
         result = action()
         self.status.set(result.message)
+
+    def _poll_runtime(self) -> None:
+        running = self.controller.runtime_running()
+        if self.runtime_was_running and not running:
+            self.refresh()
+        self.runtime_was_running = running
+        self.root.after(500, self._poll_runtime)
 
     def export_selected(self) -> None:
         selected = self.tree.selection()
