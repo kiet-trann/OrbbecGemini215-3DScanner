@@ -272,6 +272,32 @@ def test_launch_keeps_preflight_error_visible_after_refresh() -> None:
     assert window.status.value == "No Orbbec camera found"
 
 
+def test_runtime_poll_refreshes_once_when_rtabmap_stops() -> None:
+    class Controller:
+        def __init__(self) -> None:
+            self.running = False
+
+        def runtime_running(self) -> bool:
+            return self.running
+
+    class Root:
+        def after(self, delay: int, callback) -> None:
+            assert delay == 500
+            self.callback = callback
+
+    window = object.__new__(Scanner3DWindow)
+    window.controller = Controller()
+    window.root = Root()
+    window.runtime_was_running = True
+    refresh_calls: list[None] = []
+    window.refresh = lambda: refresh_calls.append(None)
+
+    window._poll_runtime()
+
+    assert refresh_calls == [None]
+    assert window.runtime_was_running is False
+
+
 def test_dashboard_marks_auto_pause_unavailable_when_activity_is_uncertain() -> None:
     controller = Scanner3DController(
         runtime=FakeRuntime(),
