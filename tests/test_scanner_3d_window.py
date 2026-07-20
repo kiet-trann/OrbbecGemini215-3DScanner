@@ -1,3 +1,5 @@
+# ruff: noqa: E402
+
 from dataclasses import dataclass
 from datetime import datetime, timezone
 import math
@@ -20,6 +22,7 @@ from scanner_app.rtabmap.exporter import ExportResult
 from scanner_app.rtabmap.windows_bridge import BridgeResult
 from scanner_app.camera.models import CameraProfile, CameraSettingsSnapshot, CaptureConfig
 from scanner_app.visualization.crop_catalog import CroppedObjOutput
+from scanner_app.visualization.navigation import DashboardPage
 from scanner_app.visualization.scanner_3d_window import (
     Scanner3DController,
     Scanner3DWindow,
@@ -146,6 +149,59 @@ def test_camera_settings_rows_show_defaults_before_inspection_and_snapshot_after
 def test_camera_control_state_disables_profile_changes_when_locked() -> None:
     assert camera_control_state(False) == tk.NORMAL
     assert camera_control_state(True) == tk.DISABLED
+
+
+class FakePageFrame:
+    def __init__(self) -> None:
+        self.grid_calls = 0
+        self.remove_calls = 0
+
+    def grid(self, **_kwargs) -> None:
+        self.grid_calls += 1
+
+    def grid_remove(self) -> None:
+        self.remove_calls += 1
+
+
+class FakeSidebarButton:
+    def __init__(self) -> None:
+        self.styles: list[str] = []
+
+    def configure(self, *, style: str) -> None:
+        self.styles.append(style)
+
+
+def test_show_page_only_changes_visible_page_and_sidebar_style() -> None:
+    overview = FakePageFrame()
+    camera = FakePageFrame()
+    overview_button = FakeSidebarButton()
+    camera_button = FakeSidebarButton()
+    window = object.__new__(Scanner3DWindow)
+    window.page_frames = {DashboardPage.OVERVIEW: overview, DashboardPage.CAMERA: camera}
+    window.sidebar_buttons = {
+        DashboardPage.OVERVIEW: overview_button,
+        DashboardPage.CAMERA: camera_button,
+    }
+    window.active_page = DashboardPage.OVERVIEW
+
+    window.show_page(DashboardPage.CAMERA)
+
+    assert window.active_page is DashboardPage.CAMERA
+    assert overview.remove_calls == 1
+    assert camera.grid_calls == 1
+    assert overview_button.styles == ["Sidebar.TButton"]
+    assert camera_button.styles == ["Sidebar.Active.TButton"]
+
+
+def test_show_page_ignores_the_reserved_settings_page() -> None:
+    window = object.__new__(Scanner3DWindow)
+    window.active_page = DashboardPage.OVERVIEW
+    window.page_frames = {}
+    window.sidebar_buttons = {}
+
+    window.show_page(DashboardPage.SETTINGS)
+
+    assert window.active_page is DashboardPage.OVERVIEW
 
 
 def test_launch_keeps_preflight_error_visible_after_refresh() -> None:
