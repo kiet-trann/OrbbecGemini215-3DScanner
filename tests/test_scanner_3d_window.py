@@ -309,7 +309,7 @@ def test_dashboard_marks_auto_pause_unavailable_when_activity_is_uncertain() -> 
     state = controller.refresh()
 
     assert not state.auto_pause_available
-    assert state.auto_pause_message == "Auto-pause unavailable: activity signal is uncertain"
+    assert state.auto_pause_message == "Tự dừng không khả dụng: tín hiệu hoạt động không chắc chắn"
     assert [session.path.name for session in state.sessions] == ["scan.db"]
 
 
@@ -330,11 +330,11 @@ def test_manual_pause_and_resume_are_available_independently_of_auto_pause() -> 
 def test_crop_preview_separates_3d_navigation_from_rectangle_selection() -> None:
     layout = crop_preview_layout()
 
-    assert layout.view_title == "3D model view"
-    assert layout.crop_title == "Crop here"
-    assert "Right-drag" in layout.view_instructions
-    assert "wheel" in layout.view_instructions
-    assert "Left-drag" in layout.crop_instructions
+    assert layout.view_title == "Xem mô hình 3D"
+    assert layout.crop_title == "Vùng cắt"
+    assert "chuột phải" in layout.view_instructions
+    assert "lăn chuột" in layout.view_instructions
+    assert "chuột trái" in layout.crop_instructions
 
 
 def test_selected_crop_path_returns_selected_catalog_output(tmp_path: Path) -> None:
