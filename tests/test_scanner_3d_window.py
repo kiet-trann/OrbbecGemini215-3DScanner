@@ -194,17 +194,6 @@ def test_show_page_only_changes_visible_page_and_sidebar_style() -> None:
     assert camera_button.styles == ["Sidebar.Active.TButton"]
 
 
-def test_show_page_ignores_the_reserved_settings_page() -> None:
-    window = object.__new__(Scanner3DWindow)
-    window.active_page = DashboardPage.OVERVIEW
-    window.page_frames = {}
-    window.sidebar_buttons = {}
-
-    window.show_page(DashboardPage.SETTINGS)
-
-    assert window.active_page is DashboardPage.OVERVIEW
-
-
 def test_refresh_dashboard_summary_uses_existing_dashboard_and_output_state(tmp_path: Path) -> None:
     class Value:
         def __init__(self) -> None:

@@ -10,7 +10,6 @@ add_src_to_path()
 from scanner_app.visualization.navigation import (
     DashboardPage,
     default_page,
-    is_navigable,
     navigation_items,
 )
 
@@ -24,12 +23,9 @@ def test_navigation_lists_each_existing_scanner_area_once() -> None:
         DashboardPage.SCAN,
         DashboardPage.SESSIONS,
         DashboardPage.OUTPUTS,
-        DashboardPage.SETTINGS,
     ]
-    assert [item.enabled for item in items] == [True, True, True, True, True, False]
+    assert all(item.enabled for item in items)
 
 
-def test_dashboard_is_the_default_and_settings_is_reserved() -> None:
+def test_dashboard_is_the_default_page() -> None:
     assert default_page() is DashboardPage.OVERVIEW
-    assert is_navigable(DashboardPage.OVERVIEW)
-    assert not is_navigable(DashboardPage.SETTINGS)

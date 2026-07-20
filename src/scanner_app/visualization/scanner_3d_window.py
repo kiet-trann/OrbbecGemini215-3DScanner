@@ -242,7 +242,6 @@ class Scanner3DWindow:
         self._build_scan_page(self._new_page_frame(DashboardPage.SCAN))
         self._build_sessions_page(self._new_page_frame(DashboardPage.SESSIONS))
         self._build_outputs_page(self._new_page_frame(DashboardPage.OUTPUTS))
-        self._build_settings_page(self._new_page_frame(DashboardPage.SETTINGS))
         self.show_page(self.active_page)
 
     def _configure_styles(self) -> None:
@@ -397,12 +396,6 @@ class Scanner3DWindow:
         )
         self.open_exported_button.pack(side=tk.RIGHT, padx=(0, 8))
         ttk.Button(actions, text="Crop raw OBJ", command=self.choose_crop_source).pack(side=tk.RIGHT, padx=(0, 8))
-
-    def _build_settings_page(self, parent: ttk.Frame) -> None:
-        ttk.Label(parent, text="Settings", font=("Segoe UI", 16, "bold")).pack(anchor=tk.W)
-        ttk.Label(parent, text="Settings will appear here when there are configurable options.").pack(
-            anchor=tk.W, pady=(8, 0)
-        )
 
     def launch(self) -> None:
         try:
