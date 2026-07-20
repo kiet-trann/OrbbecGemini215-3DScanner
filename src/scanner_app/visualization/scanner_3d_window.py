@@ -10,6 +10,7 @@ import threading
 import time
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
+from typing import Sequence
 
 import customtkinter as ctk
 
@@ -57,8 +58,48 @@ class DashboardState:
     camera_controls_locked: bool
 
 
+@dataclass(frozen=True)
+class CardMetadata:
+    title: str
+    subtitle: str
+    detail: tuple[tuple[str, str], ...]
+
+
 def camera_control_state(locked: bool) -> str:
     return tk.DISABLED if locked else tk.NORMAL
+
+
+def display_size(size_bytes: int) -> str:
+    return f"{size_bytes / 1024 / 1024:.1f}".replace(".", ",") + " MB"
+
+
+def display_timestamp(value: datetime | None) -> str:
+    return value.strftime("%d/%m/%Y · %H:%M") if value is not None else "Chưa có thời gian"
+
+
+def session_card_metadata(session: SavedSession) -> CardMetadata:
+    size = display_size(session.size_bytes)
+    updated = display_timestamp(session.modified_at)
+    return CardMetadata(
+        session.path.name,
+        f"{updated} · {size}",
+        (("Dung lượng", size), ("Cập nhật", updated)),
+    )
+
+
+def crop_card_metadata(output: CroppedObjOutput) -> CardMetadata:
+    size = display_size(output.size_bytes)
+    updated = display_timestamp(output.modified_at)
+    folder = output.output_dir.name
+    return CardMetadata(
+        output.path.name,
+        f"{folder} · {updated} · {size}",
+        (("Thư mục", folder), ("Dung lượng", size), ("Cập nhật", updated)),
+    )
+
+
+def preserved_selection(items: Sequence[Path], selected: Path | None) -> Path | None:
+    return selected if selected in items else None
 
 
 def build_summary_cards(

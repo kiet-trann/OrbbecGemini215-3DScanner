@@ -31,9 +31,12 @@ from scanner_app.visualization.scanner_3d_window import (
     build_summary_cards,
     camera_control_state,
     camera_settings_rows,
+    crop_card_metadata,
     crop_preview_limits,
     crop_preview_layout,
     crop_view_preset,
+    preserved_selection,
+    session_card_metadata,
     selected_crop_path,
 )
 
@@ -348,6 +351,42 @@ def test_selected_crop_path_returns_selected_catalog_output(tmp_path: Path) -> N
     assert selected_crop_path([output], ("0",)) == output.path
     assert selected_crop_path([output], ()) is None
     assert selected_crop_path([output], ("5",)) is None
+
+
+def test_session_card_metadata_formats_the_saved_session_for_a_card(tmp_path: Path) -> None:
+    session = SavedSession(
+        tmp_path / "scan_01.db",
+        1_572_864,
+        modified_at=datetime(2026, 7, 20, 9, 31, tzinfo=timezone.utc),
+    )
+
+    metadata = session_card_metadata(session)
+
+    assert metadata.title == "scan_01.db"
+    assert metadata.subtitle == "20/07/2026 · 09:31 · 1,5 MB"
+    assert metadata.detail == (("Dung lượng", "1,5 MB"), ("Cập nhật", "20/07/2026 · 09:31"))
+
+
+def test_crop_card_metadata_includes_the_output_folder(tmp_path: Path) -> None:
+    output = CroppedObjOutput(
+        tmp_path / "cut_01.obj",
+        tmp_path / "batch_01",
+        2_097_152,
+        datetime(2026, 7, 20, 9, 44, tzinfo=timezone.utc),
+    )
+
+    metadata = crop_card_metadata(output)
+
+    assert metadata.title == "cut_01.obj"
+    assert metadata.subtitle == "batch_01 · 20/07/2026 · 09:44 · 2,0 MB"
+    assert ("Thư mục", "batch_01") in metadata.detail
+
+
+def test_preserved_selection_keeps_only_a_path_still_in_the_refreshed_list(tmp_path: Path) -> None:
+    kept = (tmp_path / "kept.db").resolve()
+
+    assert preserved_selection([kept], kept) == kept
+    assert preserved_selection([kept], (tmp_path / "missing.db").resolve()) is None
 
 
 def test_record_crop_result_selects_compatible_obj(tmp_path: Path) -> None:
