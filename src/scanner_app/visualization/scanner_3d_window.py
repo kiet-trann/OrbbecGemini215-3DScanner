@@ -33,6 +33,7 @@ from scanner_app.visualization.dashboard_theme import (
     card,
     configure_dashboard_theme,
     configure_treeview_style,
+    dashboard_status,
 )
 from scanner_app.visualization.guided_workflow import GuidedMode, GuidedWorkflow, guided_workflow
 from scanner_app.visualization.navigation import (
@@ -258,7 +259,8 @@ class Scanner3DWindow:
         title_box = ctk.CTkFrame(header, fg_color="transparent", corner_radius=0)
         title_box.pack(side=tk.LEFT)
         ctk.CTkLabel(title_box, text="MÁY QUÉT 3D", font=("Segoe UI", 11, "bold"), text_color="#64748B").pack(anchor=tk.W)
-        ctk.CTkLabel(title_box, text="Quét mới", font=("Segoe UI", 24, "bold"), text_color="#0F172A").pack(anchor=tk.W)
+        self.page_title = tk.StringVar(value="Quét mới")
+        ctk.CTkLabel(title_box, textvariable=self.page_title, font=("Segoe UI", 24, "bold"), text_color="#0F172A").pack(anchor=tk.W)
         self.status_chip = ctk.CTkLabel(header, textvariable=self.status, corner_radius=14, fg_color="#E8EEF7", text_color="#1E3A5F", padx=12, pady=6, font=("Segoe UI", 12))
         self.status_chip.pack(side=tk.RIGHT, pady=(10, 0))
         self.page_host = ctk.CTkScrollableFrame(content, fg_color=SURFACE, corner_radius=0)
@@ -319,6 +321,8 @@ class Scanner3DWindow:
         if page in self.sidebar_buttons:
             self.sidebar_buttons[page].configure(fg_color=PRIMARY)
         self.active_page = page
+        if hasattr(self, "page_title"):
+            self.page_title.set(next(item.title for item in navigation_items() if item.page is page))
 
     def _build_new_scan_page(self, parent: ttk.Frame) -> None:
         parent.configure(style="Dashboard.TFrame")
@@ -470,6 +474,12 @@ class Scanner3DWindow:
     def refresh(self) -> None:
         dashboard = self.controller.refresh()
         self.status.set(dashboard.runtime_message)
+        status = dashboard_status(dashboard.runtime_message)
+        self.status_chip.configure(
+            text=status.label,
+            fg_color={"ready": "#DCFCE7", "error": "#FEE2E2", "neutral": "#E8EEF7"}[status.tone],
+            text_color={"ready": "#166534", "error": "#991B1B", "neutral": "#1E3A5F"}[status.tone],
+        )
         self.auto_status.set(dashboard.auto_pause_message)
         self._refresh_camera_settings(dashboard)
         self.sessions = list(dashboard.sessions)
