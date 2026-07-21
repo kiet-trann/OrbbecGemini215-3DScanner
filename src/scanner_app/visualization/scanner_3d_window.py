@@ -48,6 +48,11 @@ from scanner_app.visualization.open_actions import OpenActionService
 from scanner_app.visualization.toast import ToastNotifier
 
 
+WINDOWS_ABSOLUTE_PATH = re.compile(
+    r"(?:[A-Za-z]:\\|\\\\[^\\/:*?\"<>|\r\n]+\\)(?:[^\\/:*?\"<>|\r\n]+\\)*[^\\/:*?\"<>|\r\n]*?\.[A-Za-z0-9]{1,8}"
+)
+
+
 @dataclass(frozen=True)
 class DashboardState:
     runtime_message: str
@@ -596,7 +601,8 @@ class Scanner3DWindow:
         self.notify(dashboard_status(message).label, tone)
 
     def notify(self, message: str, tone: str = "info") -> None:
-        safe_message = re.sub(r"(?:[A-Za-z]:[\\/]|/)[^\s]+", "[đường dẫn]", message)
+        safe_message = WINDOWS_ABSOLUTE_PATH.sub("[đường dẫn]", message)
+        safe_message = re.sub(r"/[^\s]+", "[đường dẫn]", safe_message)
         self.toast.show(safe_message, tone)
 
     def refresh(self) -> None:
@@ -1100,7 +1106,7 @@ class Scanner3DWindow:
     def _crop_worker(self, source: Path, rectangle: CropRectangle, projection, output_dir: Path) -> None:
         try:
             result = crop_obj_bundle(source, rectangle, projection, output_dir)
-        except (OSError, ValueError) as error:
+        except Exception as error:
             self.root.after(0, self.notify, f"Không thể tạo mô hình đã cắt: {error}", "error")
             return
         self.root.after(0, lambda: self._record_crop_result(result))
