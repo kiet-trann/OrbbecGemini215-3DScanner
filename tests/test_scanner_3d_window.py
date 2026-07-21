@@ -250,6 +250,33 @@ def test_notify_redacts_windows_paths_with_spaces_and_unc_paths(path: str, tail:
     assert tone == "error"
 
 
+@pytest.mark.parametrize(
+    ("path", "tail"),
+    [
+        ("C:\\Scan Results\\active batch", "active batch"),
+        ("\\\\scanner-host\\shared results\\active batch", "active batch"),
+    ],
+)
+def test_notify_redacts_windows_directory_paths_without_extensions(path: str, tail: str) -> None:
+    class Toast:
+        def __init__(self) -> None:
+            self.messages: list[tuple[str, str]] = []
+
+        def show(self, message: str, tone: str) -> None:
+            self.messages.append((message, tone))
+
+    window = object.__new__(Scanner3DWindow)
+    window.toast = Toast()
+
+    window.notify(f"Không thể mở {path}", "error")
+
+    message, tone = window.toast.messages[0]
+    assert path not in message
+    assert tail not in message
+    assert "Không thể mở" in message
+    assert tone == "error"
+
+
 class FakePageFrame:
     def __init__(self) -> None:
         self.grid_calls = 0
