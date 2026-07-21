@@ -18,17 +18,17 @@ class OpenActionService:
 
     def open_obj(self, path: Path) -> OpenActionResult:
         if not path.is_file():
-            return OpenActionResult(False, "Cropped OBJ is no longer available")
-        return self._launch(path, f"Opened: {path}")
+            return OpenActionResult(False, "Không tìm thấy mô hình để mở")
+        return self._launch(path, "Đã mở mô hình 3D", "Không thể mở mô hình 3D")
 
     def open_folder(self, path: Path) -> OpenActionResult:
         if not path.is_file():
-            return OpenActionResult(False, "Cropped OBJ is no longer available")
-        return self._launch(path.parent, f"Opened folder: {path.parent}")
+            return OpenActionResult(False, "Không tìm thấy mô hình để mở")
+        return self._launch(path.parent, "Đã mở thư mục kết quả", "Không thể mở mô hình 3D")
 
-    def _launch(self, target: Path, message: str) -> OpenActionResult:
+    def _launch(self, target: Path, message: str, failure_message: str) -> OpenActionResult:
         try:
             self._launcher(str(target))
         except OSError:
-            return OpenActionResult(False, f"Could not open: {target}")
+            return OpenActionResult(False, failure_message)
         return OpenActionResult(True, message)
