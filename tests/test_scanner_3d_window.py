@@ -24,6 +24,7 @@ from scanner_app.camera.models import CameraProfile, CameraSettingsSnapshot, Cap
 from scanner_app.visualization.crop_catalog import CroppedObjOutput
 from scanner_app.visualization.dashboard_theme import PRIMARY
 from scanner_app.visualization.navigation import DashboardPage
+from scanner_app.visualization.open_actions import OpenActionResult
 from scanner_app.visualization import scanner_3d_window as scanner_window_module
 from scanner_app.visualization.scanner_3d_window import (
     CardMetadata,
@@ -190,20 +191,36 @@ def test_select_camera_profile_rerenders_after_a_successful_change() -> None:
         def set_camera_profile(self, profile: CameraProfile) -> None:
             self.profile = profile
 
-    class Status:
-        def set(self, _value: str) -> None:
-            pass
-
     rendered: list[str] = []
+    notifications: list[tuple[str, str]] = []
     window = object.__new__(Scanner3DWindow)
     window.controller = Controller()
     window.refresh = lambda: rendered.append("dashboard")
-    window.status = Status()
+    window.notify = lambda message, tone="info": notifications.append((message, tone))
 
     window._select_camera_profile(CameraProfile.FAR)
 
     assert window.controller.profile is CameraProfile.FAR
     assert rendered == ["dashboard"]
+    assert notifications == [("Đã chọn cấu hình camera: Far — Long-distance", "success")]
+
+
+def test_notify_does_not_show_absolute_paths() -> None:
+    class Toast:
+        def __init__(self) -> None:
+            self.messages: list[tuple[str, str]] = []
+
+        def show(self, message: str, tone: str) -> None:
+            self.messages.append((message, tone))
+
+    window = object.__new__(Scanner3DWindow)
+    window.toast = Toast()
+
+    window.notify("Không thể mở C:\\models\\scan.obj", "error")
+
+    message, tone = window.toast.messages[0]
+    assert "C:\\models\\scan.obj" not in message
+    assert tone == "error"
 
 
 class FakePageFrame:
@@ -303,35 +320,26 @@ def test_refresh_new_scan_uses_existing_dashboard_state_for_the_primary_action()
     assert window.new_scan_results_button.text == "Chưa có phiên để xuất"
 
 
-def test_launch_keeps_preflight_error_visible_after_refresh() -> None:
+def test_launch_reports_preflight_error_after_refresh() -> None:
     class FailingController:
         def apply_and_launch(self):
             raise RuntimeError("No Orbbec camera found")
 
-    class Status:
-        value = ""
-
-        def set(self, value: str) -> None:
-            self.value = value
-
     window = object.__new__(Scanner3DWindow)
     window.controller = FailingController()
-    window.status = Status()
-    window.refresh = lambda: window.status.set("RTAB-Map is not running")
+    notifications: list[tuple[str, str]] = []
+    window.refresh = lambda: None
+    window.notify = lambda message, tone="info": notifications.append((message, tone))
 
     window.launch()
 
-    assert window.status.value == "No Orbbec camera found"
+    assert notifications == [("No Orbbec camera found", "error")]
 
 
 def test_launch_resets_monitor_and_arms_database_probe_after_success(monkeypatch) -> None:
     class Controller:
         def apply_and_launch(self) -> RuntimeStatus:
             return RuntimeStatus(True, "RTAB-Map started")
-
-    class Status:
-        def set(self, _value: str) -> None:
-            pass
 
     calls: list[str] = []
     window = object.__new__(Scanner3DWindow)
@@ -340,8 +348,8 @@ def test_launch_resets_monitor_and_arms_database_probe_after_success(monkeypatch
     window.probe = type(
         "Probe", (), {"start": lambda self, started_at: calls.append(f"start:{started_at}")}
     )()
-    window.status = Status()
     window.refresh = lambda: calls.append("refresh")
+    window.notify = lambda _message, _tone="info": None
     monkeypatch.setattr(scanner_window_module.time, "time", lambda: 100.0)
 
     window.launch()
@@ -415,6 +423,29 @@ def test_runtime_poll_refreshes_once_when_rtabmap_stops() -> None:
 
     assert refresh_calls == [None]
     assert window.runtime_was_running is False
+
+
+def test_runtime_poll_refreshes_once_when_rtabmap_starts() -> None:
+    class Controller:
+        def runtime_running(self) -> bool:
+            return True
+
+    class Root:
+        def after(self, delay: int, callback) -> None:
+            assert delay == 500
+            self.callback = callback
+
+    window = object.__new__(Scanner3DWindow)
+    window.controller = Controller()
+    window.root = Root()
+    window.runtime_was_running = False
+    refresh_calls: list[None] = []
+    window.refresh = lambda: refresh_calls.append(None)
+
+    window._poll_runtime()
+
+    assert refresh_calls == [None]
+    assert window.runtime_was_running is True
 
 
 def test_dashboard_marks_auto_pause_unavailable_when_activity_is_uncertain() -> None:
@@ -546,16 +577,10 @@ def test_card_button_uses_only_supported_customtkinter_options(monkeypatch) -> N
 def test_record_crop_result_selects_compatible_obj(tmp_path: Path) -> None:
     selected: list[Path] = []
 
-    class Status:
-        def __init__(self) -> None:
-            self.value = ""
-
-        def set(self, value: str) -> None:
-            self.value = value
-
     window = object.__new__(Scanner3DWindow)
     window.refresh_crop_outputs = lambda select_path: selected.append(select_path)
-    window.status = Status()
+    notifications: list[tuple[str, str]] = []
+    window.notify = lambda message, tone="info": notifications.append((message, tone))
     result = CropResult(
         tmp_path / "crop",
         tmp_path / "crop" / "model_cropped.obj",
@@ -565,54 +590,46 @@ def test_record_crop_result_selects_compatible_obj(tmp_path: Path) -> None:
     window._record_crop_result(result)
 
     assert selected == [result.viewer_model]
-    assert window.status.value == f"Cropped model: {result.viewer_model}"
+    assert notifications == [("Đã tạo mô hình đã cắt", "success")]
 
 
 def test_record_export_result_enables_opening_the_viewer_model(tmp_path: Path) -> None:
     rendered: list[None] = []
 
-    class Status:
-        def __init__(self) -> None:
-            self.value = ""
-
-        def set(self, value: str) -> None:
-            self.value = value
-
     viewer_model = tmp_path / "viewer" / "scan.glb"
     result = ExportResult(tmp_path, tmp_path / "raw.obj", tmp_path / "raw.mtl", (), viewer_model, tmp_path / "log", None)
     window = object.__new__(Scanner3DWindow)
-    window.status = Status()
     window._render_crop_detail = lambda: rendered.append(None)
     window.latest_export_model = None
+    notifications: list[tuple[str, str]] = []
+    window.notify = lambda message, tone="info": notifications.append((message, tone))
 
     window._record_export_result(result)
 
     assert window.latest_export_model == viewer_model
     assert rendered == [None]
-    assert window.status.value == f"Exported for 3D Viewer: {viewer_model}"
+    assert notifications == [("Đã xuất mô hình để xem 3D", "success")]
 
 
 def test_open_latest_exported_model_uses_the_recent_viewer_model(tmp_path: Path) -> None:
     opened: list[Path] = []
 
-    class Status:
-        def set(self, _value: str) -> None:
-            pass
-
     class OpenActions:
-        def open_obj(self, path: Path) -> BridgeResult:
+        def open_obj(self, path: Path) -> OpenActionResult:
             opened.append(path)
-            return BridgeResult(True, "Opened")
+            return OpenActionResult(True, "Đã mở mô hình 3D")
 
     viewer_model = tmp_path / "viewer" / "scan.glb"
     window = object.__new__(Scanner3DWindow)
     window.latest_export_model = viewer_model
     window.open_actions = OpenActions()
-    window.status = Status()
+    notifications: list[tuple[str, str]] = []
+    window.notify = lambda message, tone="info": notifications.append((message, tone))
 
     window.open_latest_exported_model()
 
     assert opened == [viewer_model]
+    assert notifications == [("Đã mở mô hình 3D", "success")]
 
 
 def test_crop_preview_uses_less_detail_while_rotating() -> None:

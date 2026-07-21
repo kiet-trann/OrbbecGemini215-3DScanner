@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from datetime import datetime
 import math
 from pathlib import Path
+import re
 import threading
 import time
 import tkinter as tk
@@ -44,6 +45,7 @@ from scanner_app.visualization.navigation import (
     navigation_items,
 )
 from scanner_app.visualization.open_actions import OpenActionService
+from scanner_app.visualization.toast import ToastNotifier
 
 
 @dataclass(frozen=True)
@@ -351,6 +353,14 @@ class Scanner3DWindow:
         root.geometry("1080x780")
         root.minsize(860, 640)
         self._build()
+        self.toast_label = ctk.CTkLabel(
+            self.root,
+            corner_radius=10,
+            padx=14,
+            pady=9,
+            font=("Segoe UI", 12),
+        )
+        self.toast = ToastNotifier(self.root, self.toast_label)
         self.refresh()
         self._poll_auto_pause()
         self._poll_runtime()
@@ -556,28 +566,38 @@ class Scanner3DWindow:
                 self.monitor.reset()
                 self.probe.start(session_started_at)
             message = result.message
+            tone = "success" if result.running else "error"
         except (CameraPreflightError, RuntimeError) as error:
             message = str(error)
+            tone = "error"
         self.refresh()
-        self.status.set(dashboard_status(message).label)
+        self.notify(dashboard_status(message).label, tone)
 
     def inspect_camera(self) -> None:
         try:
             self.controller.inspect_camera()
             message = "Đã kiểm tra thông số camera"
+            tone = "success"
         except (CameraPreflightError, RuntimeError) as error:
             message = str(error)
+            tone = "error"
         self.refresh()
-        self.status.set(dashboard_status(message).label)
+        self.notify(dashboard_status(message).label, tone)
 
     def _select_camera_profile(self, profile: CameraProfile) -> None:
         try:
             self.controller.set_camera_profile(profile)
             message = f"Đã chọn cấu hình camera: {profile.display_name}"
+            tone = "success"
         except RuntimeError as error:
             message = str(error)
+            tone = "error"
         self.refresh()
-        self.status.set(dashboard_status(message).label)
+        self.notify(dashboard_status(message).label, tone)
+
+    def notify(self, message: str, tone: str = "info") -> None:
+        safe_message = re.sub(r"(?:[A-Za-z]:[\\/]|/)[^\s]+", "[đường dẫn]", message)
+        self.toast.show(safe_message, tone)
 
     def refresh(self) -> None:
         dashboard = self.controller.refresh()
@@ -889,11 +909,11 @@ class Scanner3DWindow:
 
     def _bridge_action(self, action) -> None:
         result = action()
-        self.status.set(dashboard_status(result.message).label)
+        self.notify(dashboard_status(result.message).label, "success" if result.sent else "error")
 
     def _poll_runtime(self) -> None:
         running = self.controller.runtime_running()
-        if self.runtime_was_running and not running:
+        if running != self.runtime_was_running:
             self.refresh()
         self.runtime_was_running = running
         self.root.after(500, self._poll_runtime)
@@ -902,8 +922,9 @@ class Scanner3DWindow:
         session = self._selected_session()
         if session is None:
             messagebox.showinfo("Quét 3D", "Hãy chọn phiên RTAB-Map đã lưu trước.")
+            self.notify("Hãy chọn phiên RTAB-Map đã lưu trước.", "error")
             return
-        self.status.set("Đang xuất OBJ có texture trong nền...")
+        self.notify("Đang xuất mô hình 3D...", "info")
         threading.Thread(target=self._export_worker, args=(session,), daemon=True).start()
 
     def _export_worker(self, session: SavedSession) -> None:
@@ -914,8 +935,10 @@ class Scanner3DWindow:
         if result.error is None and result.viewer_model is not None:
             self.latest_export_model = result.viewer_model
             self._render_crop_detail()
-        message = result.error or f"Exported for 3D Viewer: {result.viewer_model or result.obj}"
-        self.status.set(message)
+        if result.error is not None:
+            self.notify(result.error, "error")
+            return
+        self.notify("Đã xuất mô hình để xem 3D", "success")
 
     def choose_crop_source(self) -> None:
         selected = filedialog.askopenfilename(
@@ -1057,7 +1080,7 @@ class Scanner3DWindow:
             x1, y1, x2, y2 = canvas.coords(state["item"])
             rectangle = CropRectangle(min(x1, x2), min(y1, y2), max(x1, x2), max(y1, y2))
             output_dir = source_obj.parent.parent / f"cropped_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
-            self.status.set("Đang tạo OBJ đã cắt trong nền...")
+            self.notify("Đang tạo mô hình đã cắt...", "info")
             threading.Thread(target=self._crop_worker, args=(source_obj, rectangle, state["projection"], output_dir), daemon=True).start()
             dialog.destroy()
 
@@ -1078,40 +1101,44 @@ class Scanner3DWindow:
         try:
             result = crop_obj_bundle(source, rectangle, projection, output_dir)
         except (OSError, ValueError) as error:
-            self.root.after(0, self.status.set, f"Crop failed: {error}")
+            self.root.after(0, self.notify, f"Không thể tạo mô hình đã cắt: {error}", "error")
             return
         self.root.after(0, lambda: self._record_crop_result(result))
 
     def _record_crop_result(self, result: CropResult) -> None:
         self.refresh_crop_outputs(select_path=result.viewer_model)
-        self.status.set(f"Cropped model: {result.viewer_model}")
+        self.notify("Đã tạo mô hình đã cắt", "success")
 
     def open_latest_cropped_obj(self) -> None:
         output = self._selected_crop_output()
         if output is None:
-            self.status.set("Hãy chọn mô hình đã cắt trước.")
+            self.notify("Hãy chọn mô hình đã cắt trước.", "error")
             return
-        self.status.set(self.open_actions.open_obj(output.path).message)
+        result = self.open_actions.open_obj(output.path)
+        self.notify(result.message, "success" if result.opened else "error")
 
     def open_latest_exported_model(self) -> None:
         if self.latest_export_model is None:
-            self.status.set("Export a model first")
+            self.notify("Hãy xuất mô hình trước.", "error")
             return
-        self.status.set(self.open_actions.open_obj(self.latest_export_model).message)
+        result = self.open_actions.open_obj(self.latest_export_model)
+        self.notify(result.message, "success" if result.opened else "error")
 
     def open_latest_output_folder(self) -> None:
         output = self._selected_crop_output()
         if output is None:
-            self.status.set("Hãy chọn mô hình đã cắt trước.")
+            self.notify("Hãy chọn mô hình đã cắt trước.", "error")
             return
-        self.status.set(self.open_actions.open_folder(output.path).message)
+        result = self.open_actions.open_folder(output.path)
+        self.notify(result.message, "success" if result.opened else "error")
 
     def open_selected_session_folder(self) -> None:
         session = self._selected_session()
         if session is None:
-            self.status.set("Hãy chọn phiên RTAB-Map đã lưu trước.")
+            self.notify("Hãy chọn phiên RTAB-Map đã lưu trước.", "error")
             return
-        self.status.set(self.open_actions.open_folder(session.path).message)
+        result = self.open_actions.open_folder(session.path)
+        self.notify(result.message, "success" if result.opened else "error")
 
 
 def _read_obj_mesh(path: Path) -> tuple[list[tuple[float, float, float]], list[tuple[int, ...]]]:
