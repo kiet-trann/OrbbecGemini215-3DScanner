@@ -17,7 +17,7 @@ add_src_to_path()
 
 from scanner_app.rtabmap.activity import AutoPauseState
 from scanner_app.rtabmap.models import RuntimeStatus, SavedSession
-from scanner_app.rtabmap.obj_crop import CropResult
+from scanner_app.rtabmap.obj_crop import CropRectangle, CropResult
 from scanner_app.rtabmap.exporter import ExportResult
 from scanner_app.rtabmap.windows_bridge import BridgeResult
 from scanner_app.camera.models import CameraProfile, CameraSettingsSnapshot, CaptureConfig
@@ -220,6 +220,33 @@ def test_notify_does_not_show_absolute_paths() -> None:
 
     message, tone = window.toast.messages[0]
     assert "C:\\models\\scan.obj" not in message
+    assert tone == "error"
+
+
+@pytest.mark.parametrize(
+    ("path", "tail"),
+    [
+        ("C:\\Scan Results\\batch one\\model.obj", "batch one\\model.obj"),
+        ("\\\\scanner-host\\shared results\\batch one\\model.obj", "batch one\\model.obj"),
+    ],
+)
+def test_notify_redacts_windows_paths_with_spaces_and_unc_paths(path: str, tail: str) -> None:
+    class Toast:
+        def __init__(self) -> None:
+            self.messages: list[tuple[str, str]] = []
+
+        def show(self, message: str, tone: str) -> None:
+            self.messages.append((message, tone))
+
+    window = object.__new__(Scanner3DWindow)
+    window.toast = Toast()
+
+    window.notify(f"Không thể mở {path} ngay bây giờ", "error")
+
+    message, tone = window.toast.messages[0]
+    assert path not in message
+    assert tail not in message
+    assert "Không thể mở" in message
     assert tone == "error"
 
 
@@ -448,6 +475,51 @@ def test_runtime_poll_refreshes_once_when_rtabmap_starts() -> None:
     assert window.runtime_was_running is True
 
 
+def test_refresh_configures_the_runtime_status_chip() -> None:
+    class Value:
+        def __init__(self) -> None:
+            self.value = ""
+
+        def set(self, value: str) -> None:
+            self.value = value
+
+    class Chip:
+        def __init__(self) -> None:
+            self.options: dict[str, str] = {}
+
+        def configure(self, **kwargs: str) -> None:
+            self.options = kwargs
+
+    dashboard = DashboardState(
+        runtime_message="RTAB-Map is not running",
+        auto_pause_available=True,
+        auto_pause_message="Auto-pause ready",
+        sessions=(),
+        busy=False,
+        camera_profile=CameraProfile.NEAR,
+        camera_snapshot=None,
+        camera_controls_locked=False,
+    )
+    window = object.__new__(Scanner3DWindow)
+    window.controller = type("Controller", (), {"refresh": lambda self: dashboard})()
+    window.status = Value()
+    window.status_chip = Chip()
+    window.auto_status = Value()
+    window._render_camera_dashboard = lambda _dashboard: None
+    window._refresh_session_cards = lambda: None
+    window.refresh_crop_outputs = lambda: None
+    window._refresh_new_scan = lambda _dashboard: None
+
+    window.refresh()
+
+    assert window.status.value == "Sẵn sàng chuẩn bị"
+    assert window.status_chip.options == {
+        "text": "Sẵn sàng chuẩn bị",
+        "fg_color": "#E8EEF7",
+        "text_color": "#1E3A5F",
+    }
+
+
 def test_dashboard_marks_auto_pause_unavailable_when_activity_is_uncertain() -> None:
     controller = Scanner3DController(
         runtime=FakeRuntime(),
@@ -591,6 +663,22 @@ def test_record_crop_result_selects_compatible_obj(tmp_path: Path) -> None:
 
     assert selected == [result.viewer_model]
     assert notifications == [("Đã tạo mô hình đã cắt", "success")]
+
+
+def test_crop_worker_reports_unexpected_processing_errors(monkeypatch, tmp_path: Path) -> None:
+    class Root:
+        def after(self, _delay: int, callback, *args) -> None:
+            callback(*args)
+
+    notifications: list[tuple[str, str]] = []
+    window = object.__new__(Scanner3DWindow)
+    window.root = Root()
+    window.notify = lambda message, tone="info": notifications.append((message, tone))
+    monkeypatch.setattr(scanner_window_module, "crop_obj_bundle", lambda *_args: (_ for _ in ()).throw(IndexError("bad mesh")))
+
+    window._crop_worker(tmp_path / "source.obj", CropRectangle(0, 0, 1, 1), object(), tmp_path / "output")
+
+    assert notifications == [("Không thể tạo mô hình đã cắt: bad mesh", "error")]
 
 
 def test_record_export_result_enables_opening_the_viewer_model(tmp_path: Path) -> None:
