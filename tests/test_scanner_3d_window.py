@@ -324,6 +324,73 @@ def test_launch_keeps_preflight_error_visible_after_refresh() -> None:
     assert window.status.value == "No Orbbec camera found"
 
 
+def test_launch_resets_monitor_and_arms_database_probe_after_success(monkeypatch) -> None:
+    class Controller:
+        def apply_and_launch(self) -> RuntimeStatus:
+            return RuntimeStatus(True, "RTAB-Map started")
+
+    class Status:
+        def set(self, _value: str) -> None:
+            pass
+
+    calls: list[str] = []
+    window = object.__new__(Scanner3DWindow)
+    window.controller = Controller()
+    window.monitor = type("Monitor", (), {"reset": lambda self: calls.append("reset")})()
+    window.probe = type(
+        "Probe", (), {"start": lambda self, started_at: calls.append(f"start:{started_at}")}
+    )()
+    window.status = Status()
+    window.refresh = lambda: calls.append("refresh")
+    monkeypatch.setattr(scanner_window_module.time, "time", lambda: 100.0)
+
+    window.launch()
+
+    assert calls == ["reset", "start:100.0", "refresh"]
+
+
+def test_new_scan_page_labels_the_auto_pause_switch_with_its_reason(monkeypatch) -> None:
+    widget_texts: list[str] = []
+    switch_texts: list[str] = []
+
+    class Widget:
+        def __init__(self, _parent=None, **kwargs) -> None:
+            if "text" in kwargs:
+                widget_texts.append(kwargs["text"])
+
+        def configure(self, **_kwargs) -> None:
+            pass
+
+        def pack(self, **_kwargs) -> None:
+            pass
+
+        def pack_forget(self) -> None:
+            pass
+
+    class Switch(Widget):
+        def __init__(self, parent=None, **kwargs) -> None:
+            switch_texts.append(kwargs["text"])
+            super().__init__(parent, **kwargs)
+
+    monkeypatch.setattr(scanner_window_module.ctk, "CTkFrame", Widget)
+    monkeypatch.setattr(scanner_window_module.ctk, "CTkLabel", Widget)
+    monkeypatch.setattr(scanner_window_module.ctk, "CTkButton", Widget)
+    monkeypatch.setattr(scanner_window_module.ctk, "CTkCheckBox", Widget)
+    monkeypatch.setattr(scanner_window_module.ctk, "CTkSwitch", Switch)
+    monkeypatch.setattr(scanner_window_module, "card", lambda parent: Widget(parent))
+    monkeypatch.setattr(scanner_window_module.tk, "StringVar", lambda value=None: object())
+
+    window = object.__new__(Scanner3DWindow)
+    window.auto_enabled = object()
+    window.auto_status = object()
+
+    window._build_new_scan_page(Widget())
+
+    assert "Tự dừng" in widget_texts
+    assert "Tạm dừng khi bản đồ không có điểm mới" in widget_texts
+    assert switch_texts == ["Bật"]
+
+
 def test_runtime_poll_refreshes_once_when_rtabmap_stops() -> None:
     class Controller:
         def __init__(self) -> None:

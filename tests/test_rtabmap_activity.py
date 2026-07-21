@@ -1,4 +1,5 @@
 from pathlib import Path
+import os
 import sqlite3
 
 try:
@@ -12,6 +13,7 @@ from scanner_app.rtabmap.activity import (
     ActivityMonitor,
     ActivityObservation,
     AutoPauseState,
+    SessionDatabaseProbe,
     SqliteNodeCountProbe,
 )
 from scanner_app.rtabmap.windows_bridge import BridgeResult
@@ -76,3 +78,59 @@ def test_sqlite_probe_reports_missing_database_as_uncertain(tmp_path: Path) -> N
     assert observation.sequence is None
     assert observation.observed_at == 9.0
     assert observation.reason == "temporary database does not exist"
+
+
+def create_database(path: Path, *, nodes: int) -> Path:
+    connection = sqlite3.connect(path)
+    connection.execute("create table Node(id integer primary key)")
+    connection.executemany("insert into Node(id) values (?)", [(index,) for index in range(nodes)])
+    connection.commit()
+    connection.close()
+    return path
+
+
+def test_session_probe_selects_newest_readable_database_after_start(tmp_path: Path) -> None:
+    old = create_database(tmp_path / "old.db", nodes=99)
+    os.utime(old, (90.0, 90.0))
+    current = create_database(tmp_path / "scan.db", nodes=2)
+    os.utime(current, (101.0, 101.0))
+    probe = SessionDatabaseProbe(tmp_path, clock=lambda: 12.5, wall_clock=lambda: 100.0)
+
+    probe.start()
+
+    assert probe.observe() == ActivityObservation(2, 12.5, None)
+    assert probe.active_database == current
+
+
+def test_session_probe_uses_the_timestamp_captured_before_launch(tmp_path: Path) -> None:
+    current = create_database(tmp_path / "scan.db", nodes=2)
+    os.utime(current, (101.0, 101.0))
+    probe = SessionDatabaseProbe(tmp_path, clock=lambda: 12.5, wall_clock=lambda: 200.0)
+
+    probe.start(100.0)
+
+    assert probe.observe() == ActivityObservation(2, 12.5, None)
+
+
+def test_session_probe_keeps_initial_database_binding(tmp_path: Path) -> None:
+    selected = create_database(tmp_path / "first.db", nodes=2)
+    os.utime(selected, (101.0, 101.0))
+    later = create_database(tmp_path / "later.db", nodes=20)
+    os.utime(later, (99.0, 99.0))
+    probe = SessionDatabaseProbe(tmp_path, clock=lambda: 12.5, wall_clock=lambda: 100.0)
+    probe.start()
+    probe.observe()
+    os.utime(later, (102.0, 102.0))
+
+    assert probe.observe().sequence == 2
+    assert probe.active_database == selected
+
+
+def test_session_probe_is_uncertain_until_a_database_is_created_for_the_session(tmp_path: Path) -> None:
+    probe = SessionDatabaseProbe(tmp_path, clock=lambda: 12.5, wall_clock=lambda: 100.0)
+
+    probe.start()
+
+    assert probe.observe() == ActivityObservation(
+        None, 12.5, "active RTAB-Map database was not found"
+    )
