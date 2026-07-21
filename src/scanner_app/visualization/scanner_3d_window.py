@@ -51,6 +51,9 @@ from scanner_app.visualization.toast import ToastNotifier
 WINDOWS_ABSOLUTE_PATH = re.compile(
     r"(?:[A-Za-z]:\\|\\\\[^\\/:*?\"<>|\r\n]+\\)(?:[^\\/:*?\"<>|\r\n]+\\)*[^\\/:*?\"<>|\r\n]*?\.[A-Za-z0-9]{1,8}"
 )
+WINDOWS_ABSOLUTE_DIRECTORY = re.compile(
+    r"(?:[A-Za-z]:\\|\\\\[^\\/:*?\"<>|\r\n]+\\)(?:[^\\/:*?\"<>|\r\n]+\\)*[^\\/:*?\"<>|\r\n]+"
+)
 
 
 @dataclass(frozen=True)
@@ -602,6 +605,7 @@ class Scanner3DWindow:
 
     def notify(self, message: str, tone: str = "info") -> None:
         safe_message = WINDOWS_ABSOLUTE_PATH.sub("[đường dẫn]", message)
+        safe_message = WINDOWS_ABSOLUTE_DIRECTORY.sub("[đường dẫn]", safe_message)
         safe_message = re.sub(r"/[^\s]+", "[đường dẫn]", safe_message)
         self.toast.show(safe_message, tone)
 
