@@ -40,6 +40,16 @@ def test_open_obj_rejects_missing_model(tmp_path: Path) -> None:
     assert result == OpenActionResult(False, "Không tìm thấy mô hình để mở")
 
 
+def test_open_folder_reports_shell_failure_without_path(tmp_path: Path) -> None:
+    obj = tmp_path / "part_cropped.obj"
+    obj.touch()
+
+    result = OpenActionService(launcher=lambda target: (_ for _ in ()).throw(OSError("no association"))).open_folder(obj)
+
+    assert result == OpenActionResult(False, "Không thể mở thư mục kết quả")
+    assert str(obj) not in result.message
+
+
 def test_open_obj_reports_shell_failure(tmp_path: Path) -> None:
     obj = tmp_path / "part_cropped.obj"
     obj.touch()

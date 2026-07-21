@@ -24,7 +24,7 @@ class OpenActionService:
     def open_folder(self, path: Path) -> OpenActionResult:
         if not path.is_file():
             return OpenActionResult(False, "Không tìm thấy mô hình để mở")
-        return self._launch(path.parent, "Đã mở thư mục kết quả", "Không thể mở mô hình 3D")
+        return self._launch(path.parent, "Đã mở thư mục kết quả", "Không thể mở thư mục kết quả")
 
     def _launch(self, target: Path, message: str, failure_message: str) -> OpenActionResult:
         try:
