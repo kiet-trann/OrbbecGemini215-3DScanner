@@ -63,6 +63,20 @@ def test_error_toast_schedules_six_seconds() -> None:
     assert root.scheduled["after-1"][0] == 6000
 
 
+def test_unknown_toast_tone_uses_info_styling() -> None:
+    root = FakeRoot()
+    widget = FakeWidget()
+
+    ToastNotifier(root, widget).show("Fallback", tone="unexpected")
+
+    assert widget.configurations[-1] == {
+        "text": "Fallback",
+        "fg_color": "#DBEAFE",
+        "text_color": "#1E3A8A",
+    }
+    assert root.scheduled["after-1"][0] == 4000
+
+
 def test_replacement_cancels_prior_callback_and_stale_callback_cannot_hide_it() -> None:
     root = FakeRoot()
     widget = FakeWidget()
