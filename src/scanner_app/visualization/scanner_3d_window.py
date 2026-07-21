@@ -60,6 +60,7 @@ QUOTED_ABSOLUTE_PATH = re.compile(
 FORWARD_SLASH_ABSOLUTE_PATH = re.compile(
     r"(?:(?:[A-Za-z]:/|//)|/)[^)\],;\r\n]*(?=$|[)\],;])"
 )
+BARE_WINDOWS_DRIVE_ROOT = re.compile(r"(?<![A-Za-z0-9])[A-Za-z]:[\\/](?=$|[)\],;])")
 
 
 @dataclass(frozen=True)
@@ -614,6 +615,7 @@ class Scanner3DWindow:
         safe_message = WINDOWS_ABSOLUTE_PATH.sub("[đường dẫn]", safe_message)
         safe_message = WINDOWS_ABSOLUTE_DIRECTORY.sub("[đường dẫn]", safe_message)
         safe_message = FORWARD_SLASH_ABSOLUTE_PATH.sub("[đường dẫn]", safe_message)
+        safe_message = BARE_WINDOWS_DRIVE_ROOT.sub("[đường dẫn]", safe_message)
         self.toast.show(safe_message, tone)
 
     def refresh(self) -> None:

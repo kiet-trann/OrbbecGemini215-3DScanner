@@ -223,6 +223,25 @@ def test_notify_does_not_show_absolute_paths() -> None:
     assert tone == "error"
 
 
+def test_notify_redacts_a_bare_drive_root_at_end_of_message() -> None:
+    class Toast:
+        def __init__(self) -> None:
+            self.messages: list[tuple[str, str]] = []
+
+        def show(self, message: str, tone: str) -> None:
+            self.messages.append((message, tone))
+
+    window = object.__new__(Scanner3DWindow)
+    window.toast = Toast()
+
+    window.notify("Failed C:\\", "error")
+
+    message, tone = window.toast.messages[0]
+    assert "C:\\" not in message
+    assert "Failed" in message
+    assert tone == "error"
+
+
 @pytest.mark.parametrize(
     ("path", "tail"),
     [
