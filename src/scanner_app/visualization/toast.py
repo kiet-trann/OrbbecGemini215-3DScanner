@@ -23,7 +23,7 @@ class ToastNotifier:
 
         self._generation += 1
         generation = self._generation
-        background, foreground, delay_ms = TOAST_STYLES[tone]
+        background, foreground, delay_ms = TOAST_STYLES.get(tone, TOAST_STYLES["info"])
         self._widget.configure(text=message, fg_color=background, text_color=foreground)
         self._widget.place(relx=0.975, rely=0.965, anchor="se")
         self._hide_handle = self._root.after(delay_ms, lambda: self._hide_if_current(generation))

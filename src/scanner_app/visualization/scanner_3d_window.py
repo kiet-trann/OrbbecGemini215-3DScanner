@@ -54,6 +54,12 @@ WINDOWS_ABSOLUTE_PATH = re.compile(
 WINDOWS_ABSOLUTE_DIRECTORY = re.compile(
     r"(?:[A-Za-z]:\\|\\\\[^\\/:*?\"<>|\r\n]+\\)(?:[^\\/:*?\"<>|\r\n]+\\)*[^\\/:*?\"<>|\r\n]+"
 )
+QUOTED_ABSOLUTE_PATH = re.compile(
+    r"([\"'])(?:(?:[A-Za-z]:[\\/]|\\\\[^\\/:*?\"<>|\r\n]+\\|/)[^\"']*)\1"
+)
+FORWARD_SLASH_ABSOLUTE_PATH = re.compile(
+    r"(?:(?:[A-Za-z]:/|//)|/)[^)\],;\r\n]*(?=$|[)\],;])"
+)
 
 
 @dataclass(frozen=True)
@@ -604,9 +610,10 @@ class Scanner3DWindow:
         self.notify(dashboard_status(message).label, tone)
 
     def notify(self, message: str, tone: str = "info") -> None:
-        safe_message = WINDOWS_ABSOLUTE_PATH.sub("[đường dẫn]", message)
+        safe_message = QUOTED_ABSOLUTE_PATH.sub("[đường dẫn]", message)
+        safe_message = WINDOWS_ABSOLUTE_PATH.sub("[đường dẫn]", safe_message)
         safe_message = WINDOWS_ABSOLUTE_DIRECTORY.sub("[đường dẫn]", safe_message)
-        safe_message = re.sub(r"/[^\s]+", "[đường dẫn]", safe_message)
+        safe_message = FORWARD_SLASH_ABSOLUTE_PATH.sub("[đường dẫn]", safe_message)
         self.toast.show(safe_message, tone)
 
     def refresh(self) -> None:
@@ -938,7 +945,11 @@ class Scanner3DWindow:
         threading.Thread(target=self._export_worker, args=(session,), daemon=True).start()
 
     def _export_worker(self, session: SavedSession) -> None:
-        result = self.exporter.export(ExportRequest(session.path, self.output_root))
+        try:
+            result = self.exporter.export(ExportRequest(session.path, self.output_root))
+        except OSError as error:
+            self.root.after(0, self.notify, f"Không thể xuất mô hình 3D: {error}", "error")
+            return
         self.root.after(0, lambda: self._record_export_result(result))
 
     def _record_export_result(self, result) -> None:

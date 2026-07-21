@@ -277,6 +277,63 @@ def test_notify_redacts_windows_directory_paths_without_extensions(path: str, ta
     assert tone == "error"
 
 
+@pytest.mark.parametrize(
+    ("path", "tail"),
+    [
+        ("C:\\", "C:\\"),
+        ("\\\\scanner-host\\shared results", "shared results"),
+        ("C:/Scan Results/active batch", "active batch"),
+        ('"C:\\Scan Results\\active batch"', "active batch"),
+        ("/var/scan results/active batch", "active batch"),
+    ],
+)
+def test_notify_redacts_root_quoted_forward_slash_and_posix_paths(path: str, tail: str) -> None:
+    class Toast:
+        def __init__(self) -> None:
+            self.messages: list[tuple[str, str]] = []
+
+        def show(self, message: str, tone: str) -> None:
+            self.messages.append((message, tone))
+
+    window = object.__new__(Scanner3DWindow)
+    window.toast = Toast()
+
+    window.notify(f"Không thể mở ({path})", "error")
+
+    message, tone = window.toast.messages[0]
+    assert path not in message
+    assert tail not in message
+    assert "Không thể mở" in message
+    assert tone == "error"
+
+
+@pytest.mark.parametrize(
+    ("path", "fragments"),
+    [
+        ("C:/Forward Results/active batch", ("Results", "batch")),
+        ("/var/posix results/active batch", ("results", "batch")),
+    ],
+)
+def test_notify_redacts_entire_forward_slash_and_posix_paths(path: str, fragments: tuple[str, str]) -> None:
+    class Toast:
+        def __init__(self) -> None:
+            self.messages: list[tuple[str, str]] = []
+
+        def show(self, message: str, tone: str) -> None:
+            self.messages.append((message, tone))
+
+    window = object.__new__(Scanner3DWindow)
+    window.toast = Toast()
+
+    window.notify(f"Không thể mở ({path}); vui lòng thử lại", "error")
+
+    message, _tone = window.toast.messages[0]
+    assert path not in message
+    assert all(fragment not in message for fragment in fragments)
+    assert "Không thể mở" in message
+    assert "vui lòng thử lại" in message
+
+
 class FakePageFrame:
     def __init__(self) -> None:
         self.grid_calls = 0
@@ -724,6 +781,33 @@ def test_record_export_result_enables_opening_the_viewer_model(tmp_path: Path) -
     assert window.latest_export_model == viewer_model
     assert rendered == [None]
     assert notifications == [("Đã xuất mô hình để xem 3D", "success")]
+
+
+def test_export_worker_schedules_an_error_toast_for_operational_failures(tmp_path: Path) -> None:
+    class Root:
+        def __init__(self) -> None:
+            self.scheduled: list[tuple[int, object, tuple[object, ...]]] = []
+
+        def after(self, delay: int, callback, *args) -> None:
+            self.scheduled.append((delay, callback, args))
+            callback(*args)
+
+    class Exporter:
+        def export(self, _request) -> None:
+            raise FileExistsError("output exists")
+
+    notifications: list[tuple[str, str]] = []
+    window = object.__new__(Scanner3DWindow)
+    window.root = Root()
+    window.exporter = Exporter()
+    window.output_root = tmp_path / "output"
+    window.notify = lambda message, tone="info": notifications.append((message, tone))
+    session = SavedSession(tmp_path / "scan.db", 1, modified_at=None)  # type: ignore[arg-type]
+
+    window._export_worker(session)
+
+    assert window.root.scheduled[0][0] == 0
+    assert notifications == [("Không thể xuất mô hình 3D: output exists", "error")]
 
 
 def test_open_latest_exported_model_uses_the_recent_viewer_model(tmp_path: Path) -> None:
