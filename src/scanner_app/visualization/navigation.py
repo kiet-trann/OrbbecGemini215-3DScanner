@@ -8,7 +8,6 @@ class DashboardPage(str, Enum):
     NEW_SCAN = "new_scan"
     CAMERA = "camera"
     RESULTS = "results"
-    ADVANCED = "advanced"
 
 
 @dataclass(frozen=True)
@@ -24,7 +23,6 @@ def navigation_items() -> tuple[NavigationItem, ...]:
         NavigationItem(DashboardPage.NEW_SCAN, "Quét mới", "Làm việc"),
         NavigationItem(DashboardPage.CAMERA, "Camera", "Làm việc"),
         NavigationItem(DashboardPage.RESULTS, "Phiên & kết quả", "Làm việc"),
-        NavigationItem(DashboardPage.ADVANCED, "Công cụ nâng cao", "Làm việc"),
     )
 
 

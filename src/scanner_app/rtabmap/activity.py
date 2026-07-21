@@ -34,6 +34,10 @@ class SqliteNodeCountProbe:
         self._clock = clock
         self._last_sequence: int | None = None
 
+    @property
+    def database(self) -> Path:
+        return self._database
+
     def observe(self) -> ActivityObservation:
         observed_at = self._clock()
         if not self._database.is_file():
@@ -57,6 +61,61 @@ class SqliteNodeCountProbe:
         return ActivityObservation(sequence, observed_at, None)
 
 
+class SessionDatabaseProbe:
+    """Discover and then retain the database created by the current RTAB-Map session."""
+
+    def __init__(
+        self,
+        session_dir: Path,
+        *,
+        clock: Callable[[], float] = time.monotonic,
+        wall_clock: Callable[[], float] = time.time,
+    ) -> None:
+        self._session_dir = session_dir
+        self._clock = clock
+        self._wall_clock = wall_clock
+        self._started_at: float | None = None
+        self._probe: SqliteNodeCountProbe | None = None
+
+    @property
+    def active_database(self) -> Path | None:
+        return self._probe.database if self._probe is not None else None
+
+    def start(self, started_at: float | None = None) -> None:
+        self._started_at = self._wall_clock() if started_at is None else started_at
+        self._probe = None
+
+    def observe(self) -> ActivityObservation:
+        if self._started_at is None:
+            return ActivityObservation(None, self._clock(), "RTAB-Map session has not started")
+        if self._probe is None:
+            self._probe = self._discover_probe()
+        if self._probe is None:
+            return ActivityObservation(None, self._clock(), "active RTAB-Map database was not found")
+        return self._probe.observe()
+
+    def _discover_probe(self) -> SqliteNodeCountProbe | None:
+        assert self._started_at is not None
+        try:
+            candidates = sorted(
+                (
+                    path
+                    for path in self._session_dir.glob("*.db")
+                    if path.is_file() and path.stat().st_mtime >= self._started_at
+                ),
+                key=lambda path: path.stat().st_mtime,
+                reverse=True,
+            )
+        except OSError:
+            return None
+
+        for database in candidates:
+            probe = SqliteNodeCountProbe(database, clock=self._clock)
+            if probe.observe().sequence is not None:
+                return probe
+        return None
+
+
 class ActivityMonitor:
     """Pause once after verified RTAB-Map activity becomes inactive."""
 
@@ -77,6 +136,13 @@ class ActivityMonitor:
 
     @property
     def state(self) -> AutoPauseState:
+        return self._state
+
+    def reset(self) -> AutoPauseState:
+        self._state = AutoPauseState.DISABLED
+        self._last_sequence = None
+        self._last_activity_at = None
+        self._countdown_started_at = None
         return self._state
 
     def observe(self, observation: ActivityObservation) -> AutoPauseState:

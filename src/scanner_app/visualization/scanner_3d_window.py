@@ -14,7 +14,7 @@ from typing import Sequence
 
 import customtkinter as ctk
 
-from scanner_app.rtabmap.activity import ActivityMonitor, AutoPauseState, SqliteNodeCountProbe
+from scanner_app.rtabmap.activity import ActivityMonitor, AutoPauseState, SessionDatabaseProbe
 from scanner_app.rtabmap.catalog import SessionCatalog
 from scanner_app.rtabmap.exporter import ExportRequest, ExportService
 from scanner_app.rtabmap.models import RuntimeStatus, SavedSession
@@ -329,7 +329,7 @@ class Scanner3DController:
 
 class Scanner3DWindow:
     def __init__(self, root: tk.Tk, *, controller: Scanner3DController, monitor: ActivityMonitor,
-                 probe: SqliteNodeCountProbe, catalog: SessionCatalog, exporter: ExportService, output_root: Path) -> None:
+                 probe: SessionDatabaseProbe, catalog: SessionCatalog, exporter: ExportService, output_root: Path) -> None:
         self.root, self.controller, self.monitor, self.probe = root, controller, monitor, probe
         self.catalog, self.exporter, self.output_root = catalog, exporter, output_root
         self.auto_enabled = tk.BooleanVar(value=False)
@@ -385,7 +385,6 @@ class Scanner3DWindow:
         self._build_new_scan_page(self._new_page_frame(DashboardPage.NEW_SCAN))
         self._build_camera_page(self._new_page_frame(DashboardPage.CAMERA))
         self._build_results_page(self._new_page_frame(DashboardPage.RESULTS))
-        self._build_advanced_page(self._new_page_frame(DashboardPage.ADVANCED))
         self.show_page(self.active_page)
 
     def _configure_styles(self) -> None:
@@ -449,6 +448,37 @@ class Scanner3DWindow:
         ctk.CTkLabel(workflow, textvariable=self.new_scan_detail, font=("Segoe UI", 13), text_color="#64748B", wraplength=600, justify="left").pack(anchor=tk.W, padx=20, pady=(5, 14))
         self.new_scan_primary_button = ctk.CTkButton(workflow, text="Kiểm tra camera", fg_color=PRIMARY, hover_color="#1D4ED8", height=40, corner_radius=8)
         self.new_scan_primary_button.pack(anchor=tk.W, padx=20, pady=(0, 18))
+        auto_controls = ctk.CTkFrame(workflow, fg_color="transparent")
+        auto_controls.pack(fill=tk.X, padx=20, pady=(0, 6))
+        auto_copy = ctk.CTkFrame(auto_controls, fg_color="transparent")
+        auto_copy.pack(side=tk.LEFT, fill=tk.X, expand=True)
+        ctk.CTkLabel(
+            auto_copy,
+            text="Tự dừng",
+            font=("Segoe UI", 13, "bold"),
+            text_color="#0F172A",
+        ).pack(anchor=tk.W)
+        ctk.CTkLabel(
+            auto_copy,
+            text="Tạm dừng khi bản đồ không có điểm mới",
+            font=("Segoe UI", 12),
+            text_color="#64748B",
+        ).pack(anchor=tk.W, pady=(1, 0))
+        ctk.CTkSwitch(
+            auto_controls,
+            text="Bật",
+            variable=self.auto_enabled,
+            command=self._toggle_auto_pause,
+            text_color="#0F172A",
+        ).pack(side=tk.RIGHT, padx=(12, 0), pady=2)
+        ctk.CTkLabel(
+            workflow,
+            textvariable=self.auto_status,
+            font=("Segoe UI", 12),
+            text_color="#64748B",
+            wraplength=600,
+            justify="left",
+        ).pack(anchor=tk.W, padx=20, pady=(0, 18))
         self.new_scan_results_button = ctk.CTkButton(
             workflow, command=lambda: self.show_page(DashboardPage.RESULTS)
         )
@@ -482,19 +512,6 @@ class Scanner3DWindow:
         self.camera_fact_groups = ctk.CTkFrame(parent, fg_color="transparent")
         self.camera_fact_groups.pack(fill=tk.X)
         self.camera_profile_buttons: dict[CameraProfile, ctk.CTkButton] = {}
-
-    def _build_advanced_page(self, parent: ttk.Frame) -> None:
-        ttk.Label(parent, text="Công cụ nâng cao", font=("Segoe UI", 16, "bold")).pack(anchor=tk.W)
-        ttk.Label(parent, text="Các điều khiển kỹ thuật dành cho lúc bạn cần can thiệp vào phiên quét.").pack(
-            anchor=tk.W, pady=(2, 12)
-        )
-        controls = ttk.Frame(parent)
-        controls.pack(fill=tk.X)
-        ttk.Button(controls, text="Tạm dừng", command=lambda: self._bridge_action(self.controller.request_pause)).pack(side=tk.LEFT, padx=6)
-        ttk.Button(controls, text="Tiếp tục", command=lambda: self._bridge_action(self.controller.request_resume)).pack(side=tk.LEFT, padx=6)
-        ttk.Checkbutton(controls, text="Tự dừng (thử nghiệm)", variable=self.auto_enabled,
-                        command=self._toggle_auto_pause).pack(side=tk.RIGHT)
-        ttk.Label(parent, textvariable=self.auto_status).pack(anchor=tk.W, pady=(10, 6))
 
     def _build_results_page(self, parent: ttk.Frame) -> None:
         ctk.CTkLabel(parent, text="Phiên quét & kết quả", font=("Segoe UI", 18, "bold"), text_color="#0F172A").pack(anchor=tk.W)
@@ -533,7 +550,12 @@ class Scanner3DWindow:
 
     def launch(self) -> None:
         try:
-            message = self.controller.apply_and_launch().message
+            session_started_at = time.time()
+            result = self.controller.apply_and_launch()
+            if result.running:
+                self.monitor.reset()
+                self.probe.start(session_started_at)
+            message = result.message
         except (CameraPreflightError, RuntimeError) as error:
             message = str(error)
         self.refresh()
@@ -846,20 +868,23 @@ class Scanner3DWindow:
         if not self.auto_enabled.get():
             self.auto_status.set("Tự dừng đang tắt")
         else:
-            self.auto_status.set("Tự dừng đang khởi tạo: chờ hoạt động từ RTAB-Map")
+            self.auto_status.set("Tự dừng sẽ theo dõi sau khi RTAB-Map bắt đầu quét")
 
     def _poll_auto_pause(self) -> None:
         if self.auto_enabled.get():
-            state = self.monitor.observe(self.probe.observe())
-            self.auto_status.set({
-                AutoPauseState.WARMING_UP: "Tự dừng đang khởi tạo: di chuyển camera để tạo điểm bản đồ",
-                AutoPauseState.ACTIVE: "Tự dừng đã sẵn sàng: tạm dừng sau 3 giây không có điểm mới",
-                AutoPauseState.COUNTDOWN: "Tự dừng đang đếm ngược",
-                AutoPauseState.PAUSED: "Tự dừng đã tạm dừng RTAB-Map; hãy kiểm tra mô hình",
-                AutoPauseState.UNCERTAIN: "Tự dừng không khả dụng: tín hiệu hoạt động không chắc chắn",
-            }.get(state, "Tự dừng đang tắt"))
-            if state is AutoPauseState.UNCERTAIN:
-                self.auto_enabled.set(False)
+            if not self.controller.runtime_running():
+                self.auto_status.set("Tự dừng sẽ theo dõi sau khi RTAB-Map bắt đầu quét")
+            else:
+                state = self.monitor.observe(self.probe.observe())
+                self.auto_status.set({
+                    AutoPauseState.WARMING_UP: "Tự dừng đang khởi tạo: di chuyển camera để tạo điểm bản đồ",
+                    AutoPauseState.ACTIVE: "Tự dừng đã sẵn sàng: tạm dừng sau 3 giây không có điểm mới",
+                    AutoPauseState.COUNTDOWN: "Tự dừng đang đếm ngược",
+                    AutoPauseState.PAUSED: "Tự dừng đã tạm dừng RTAB-Map; hãy kiểm tra mô hình",
+                    AutoPauseState.UNCERTAIN: "Tự dừng không khả dụng: tín hiệu hoạt động không chắc chắn",
+                }.get(state, "Tự dừng đang tắt"))
+                if state is AutoPauseState.UNCERTAIN:
+                    self.auto_enabled.set(False)
         self.root.after(250, self._poll_auto_pause)
 
     def _bridge_action(self, action) -> None:
@@ -1114,7 +1139,7 @@ def main() -> int:
     )
     root = ctk.CTk()
     Scanner3DWindow(root, controller=controller, monitor=monitor,
-                         probe=SqliteNodeCountProbe(session_dir / "rtabmap.tmp.db"), catalog=catalog,
+                         probe=SessionDatabaseProbe(session_dir), catalog=catalog,
                          exporter=ExportService(exporter=runtime._paths.exporter),
                          output_root=project_root / "outputs" / "scanner_3d")
     root.mainloop()
