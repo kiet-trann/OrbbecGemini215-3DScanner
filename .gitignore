@@ -1,26 +1,76 @@
-.venv/
+# Python bytecode and caches
 __pycache__/
 *.py[cod]
+*$py.class
 .pytest_cache/
 .ruff_cache/
 .mypy_cache/
-.worktrees/
+.hypothesis/
+.pyre/
+.pytype/
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+
+# Coverage, test, and packaging outputs
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
+.tox/
+.nox/
+build/
+dist/
+.eggs/
+*.egg-info/
+pip-wheel-metadata/
+
+# Local environment and secrets
+.env
+.env.*
+!.env.example
+!.env.sample
+
+# Editors and IDEs
+.i[d]ea/
+.vscode/
+*.code-workspace
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+
+# Operating-system metadata
+.DS_Store
+Thumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# Local agent and worktree state
+.agents/
+.codex/
 .superpowers/
+.worktrees/
 
-# Local scan data can be large.
-data/raw/*
-data/sessions/*
-outputs/ply/*
-outputs/obj/*
-outputs/stl/*
-
-!data/raw/.gitkeep
-!data/sessions/.gitkeep
-!outputs/ply/.gitkeep
-!outputs/obj/.gitkeep
-!outputs/stl/.gitkeep
-
-# Calibration/config examples can be committed intentionally.
+# Runtime logs and temporary files
+Log/
 *.log
 *.tmp
-Log/
+*.temp
+*.bak
+*.swp
+*~
+
+# Raw scan/session data can be large; keep directory placeholders.
+data/raw/**
+data/sessions/**
+!data/raw/.gitkeep
+!data/sessions/.gitkeep
+
+# All scan outputs are generated; keep directory placeholders at any depth.
+outputs/**
+!outputs/**/
+!outputs/**/.gitkeep
