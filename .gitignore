@@ -49,11 +49,12 @@ Thumbs.db
 Desktop.ini
 $RECYCLE.BIN/
 
-# Local agent and worktree state
+# Local agent, generated planning, and worktree state
 .agents/
 .codex/
 .superpowers/
 .worktrees/
+docs/superpowers/
 
 # Runtime logs and temporary files
 Log/
