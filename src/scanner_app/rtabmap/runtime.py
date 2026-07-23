@@ -1,6 +1,7 @@
 """Locate and launch RTAB-Map without opening an RGB-D camera stream."""
 
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
+import os
 from pathlib import Path
 import subprocess
 from typing import Protocol
@@ -14,6 +15,15 @@ class Process(Protocol):
 
 
 ProcessFactory = Callable[[list[str], Path], Process]
+
+DEFAULT_RTABMAP_VERSION = "0.23.8"
+FALLBACK_RTABMAP_VERSION = "0.23.1"
+RTABMAP_VERSION_ENV = "SCANNER_RTABMAP_VERSION"
+SUPPORTED_RTABMAP_VERSIONS = (DEFAULT_RTABMAP_VERSION, FALLBACK_RTABMAP_VERSION)
+
+
+def _runtime_root(project_root: Path, version: str) -> Path:
+    return project_root / "third_party" / "rtabmap" / f"RTABMap-{version}-win64"
 
 
 def _start_process(args: list[str], cwd: Path) -> subprocess.Popen[bytes]:
@@ -33,8 +43,29 @@ class RtabmapRuntime:
         exporter = bin_dir / "rtabmap-export.exe"
         for path in (executable, exporter):
             if not path.is_file():
-                raise FileNotFoundError(f"Required RTAB-Map file is missing: {path.name}")
+                raise FileNotFoundError(f"Required RTAB-Map file is missing: {path}")
         return RtabmapPaths(executable=executable, exporter=exporter)
+
+    @classmethod
+    def resolve(
+        cls,
+        project_root: Path,
+        *,
+        environ: Mapping[str, str] = os.environ,
+    ) -> RtabmapPaths:
+        requested = environ.get(RTABMAP_VERSION_ENV)
+        if requested is not None:
+            if requested not in SUPPORTED_RTABMAP_VERSIONS:
+                supported = ", ".join(SUPPORTED_RTABMAP_VERSIONS)
+                raise ValueError(f"Unsupported RTAB-Map version {requested!r}; expected {supported}")
+            return cls.discover(_runtime_root(project_root, requested))
+        try:
+            return cls.discover(_runtime_root(project_root, DEFAULT_RTABMAP_VERSION))
+        except FileNotFoundError as primary_error:
+            try:
+                return cls.discover(_runtime_root(project_root, FALLBACK_RTABMAP_VERSION))
+            except FileNotFoundError:
+                raise primary_error
 
     @classmethod
     def from_paths(
