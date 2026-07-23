@@ -132,6 +132,19 @@ While RTAB-Map is running, the app locks the profile and preflight controls:
 you **cannot change the profile** during a scan. Close RTAB-Map, choose the
 next profile, then select **Apply & Open RTAB-Map** for the next scan.
 
+### Gemini 215 initialization failure
+
+If camera inspection reports `USB2.0`, the application will not open
+RTAB-Map because the normal scan profiles require `USB3.0`. Close Orbbec
+Viewer and other camera applications, unplug the camera, reconnect it through
+a USB 3 port and cable, then inspect the camera again. Do not lower resolution
+or FPS to bypass the warning because that reduces geometry and texture
+quality.
+
+Do not use `rtabmap-rgbd_camera.exe` from the 0.23.8 portable bundle for
+diagnostics: the upstream archive omits `opencv_highgui4.dll`. The production
+workflow uses `RTABMap.exe`, which does not depend on this DLL.
+
 RTAB-Map normally saves databases in:
 
 ```text

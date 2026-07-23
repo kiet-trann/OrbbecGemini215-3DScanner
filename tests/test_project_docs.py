@@ -68,3 +68,14 @@ def test_pytest_registers_the_native_integration_marker() -> None:
 
     markers = configuration["tool"]["pytest"]["ini_options"]["markers"]
     assert any(marker.startswith("integration:") for marker in markers)
+
+
+def test_readmes_document_gemini_usb3_preflight_and_cli_limitation() -> None:
+    vietnamese = Path("README.md").read_text(encoding="utf-8")
+    english = Path("README.en.md").read_text(encoding="utf-8")
+
+    for readme in (vietnamese, english):
+        assert "USB2.0" in readme
+        assert "USB3.0" in readme
+        assert "opencv_highgui4.dll" in readme
+        assert "rtabmap-rgbd_camera.exe" in readme

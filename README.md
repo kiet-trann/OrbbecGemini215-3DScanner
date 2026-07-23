@@ -123,6 +123,18 @@ Khi RTAB-Map đang chạy, app khóa profile và các nút preflight: **không t
 chế độ** giữa phiên scan. Hãy đóng RTAB-Map, chọn profile mới, rồi bấm
 **Apply & Open RTAB-Map** cho phiên tiếp theo.
 
+### Lỗi khởi tạo Gemini 215
+
+Nếu kiểm tra camera báo `USB2.0`, ứng dụng sẽ không mở RTAB-Map vì profile
+quét chuẩn cần `USB3.0`. Đóng Orbbec Viewer hoặc ứng dụng camera khác, rút
+camera, cắm lại bằng cổng và cáp USB 3, rồi bấm kiểm tra camera lần nữa.
+Không hạ độ phân giải/FPS để bỏ qua cảnh báo vì điều đó làm giảm chất lượng
+hình học và texture.
+
+Không dùng `rtabmap-rgbd_camera.exe` trong gói portable 0.23.8 để chẩn đoán:
+archive upstream thiếu `opencv_highgui4.dll`. Luồng sản phẩm dùng
+`RTABMap.exe` và không phụ thuộc DLL này.
+
 Database RTAB-Map mặc định nằm tại:
 
 ```text
