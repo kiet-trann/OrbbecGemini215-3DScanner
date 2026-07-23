@@ -79,3 +79,8 @@ def test_readmes_document_gemini_usb3_preflight_and_cli_limitation() -> None:
         assert "USB3.0" in readme
         assert "opencv_highgui4.dll" in readme
         assert "rtabmap-rgbd_camera.exe" in readme
+        assert "Orbbec SDK" in readme
+        assert "More Options" in readme
+
+    assert "chọn nguồn Orbbec Gemini 215" not in vietnamese
+    assert "select the Orbbec Gemini 215 source" not in english

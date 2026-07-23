@@ -112,7 +112,10 @@ Khi cần thấy lỗi trong terminal, dùng `python.exe` thay cho `pythonw.exe`
    profile stream, dải depth, alignment, IMU và depth filters mà camera trả về.
 4. Bấm **Apply & Open RTAB-Map**. App thiết lập và xác nhận mode trước khi
    RTAB-Map mở camera.
-5. Trong RTAB-Map, chọn nguồn Orbbec Gemini 215 rồi quét chậm quanh vật thể.
+5. Trong RTAB-Map, chỉ cần bấm **Start/Play** để dùng nguồn **Orbbec SDK** đã
+   lưu rồi quét chậm quanh vật thể. Gemini 215 không xuất hiện theo tên trong
+   menu nguồn nhanh. Chỉ khi cấu hình nguồn bị mất, mở
+   **Detection → More Options...** và chọn driver **Orbbec SDK** cho camera RGB-D.
    Cố gắng giữ camera thấy các bề mặt cần lấy và tránh chuyển động quá nhanh.
 6. Khi quét xong, Pause nếu cần kiểm tra model.
 7. Lưu session từ RTAB-Map: **File → Close database**, sau đó xác nhận lưu

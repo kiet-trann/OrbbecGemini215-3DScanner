@@ -120,8 +120,11 @@ $ProjectRoot = (Get-Location).Path
    and depth filters.
 4. Select **Apply & Open RTAB-Map**. The app configures and verifies the mode
    before RTAB-Map opens the camera.
-5. In RTAB-Map, select the Orbbec Gemini 215 source and slowly scan around
-   the object. Keep the camera focused on the surfaces you need and avoid
+5. In RTAB-Map, select **Start/Play** to use the saved **Orbbec SDK** source,
+   then slowly scan around the object. Gemini 215 is not listed by name in the
+   quick-source menu. Only if the source configuration has been lost, open
+   **Detection → More Options...** and select the **Orbbec SDK** driver for the
+   RGB-D camera. Keep the camera focused on the surfaces you need and avoid
    moving too quickly.
 6. When scanning is complete, pause if you need to inspect the model.
 7. Save the session from RTAB-Map: select **File → Close database**, then
