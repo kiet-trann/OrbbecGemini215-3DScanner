@@ -8,6 +8,8 @@ from pathlib import Path
 import subprocess
 
 from scanner_app.rtabmap.glb_bundle import create_3d_viewer_glb
+from scanner_app.rtabmap.models import RtabmapPaths
+from scanner_app.rtabmap.runtime import RtabmapRuntime
 
 
 @dataclass(frozen=True)
@@ -110,10 +112,17 @@ def build_argument_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def main(argv: list[str] | None = None) -> int:
+def main(
+    argv: list[str] | None = None,
+    *,
+    project_root: Path | None = None,
+    resolve_paths: Callable[[Path], RtabmapPaths] = RtabmapRuntime.resolve,
+    service_factory: Callable[..., ExportService] = ExportService,
+) -> int:
     args = build_argument_parser().parse_args(argv)
-    exporter = Path(__file__).resolve().parents[3] / "third_party" / "rtabmap" / "RTABMap-0.23.1-win64" / "bin" / "rtabmap-export.exe"
-    result = ExportService(exporter=exporter).export(
+    root = project_root if project_root is not None else Path(__file__).resolve().parents[3]
+    paths = resolve_paths(root)
+    result = service_factory(exporter=paths.exporter).export(
         ExportRequest(database=args.database, output_root=args.output_root)
     )
     print(result.log)

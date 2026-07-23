@@ -12,7 +12,8 @@ except ImportError:
 
 add_src_to_path()
 
-from scanner_app.rtabmap.exporter import ExportRequest, ExportService, build_argument_parser
+from scanner_app.rtabmap.exporter import ExportRequest, ExportResult, ExportService, build_argument_parser, main
+from scanner_app.rtabmap.models import RtabmapPaths
 
 
 @dataclass(frozen=True)
@@ -93,3 +94,28 @@ def test_exporter_cli_accepts_database_and_output_root() -> None:
 
     assert args.database == Path("scan.db")
     assert args.output_root == Path("exports")
+
+
+def test_exporter_main_uses_resolved_runtime(tmp_path: Path) -> None:
+    selected = RtabmapPaths(
+        executable=tmp_path / "bin" / "RTABMap.exe",
+        exporter=tmp_path / "bin" / "rtabmap-export.exe",
+    )
+    seen: list[Path] = []
+
+    class FakeService:
+        def __init__(self, *, exporter: Path) -> None:
+            seen.append(exporter)
+
+        def export(self, request: ExportRequest) -> ExportResult:
+            return ExportResult(request.output_root, None, None, (), None, tmp_path / "log", "stop")
+
+    exit_code = main(
+        ["scan.db", "--output-root", "exports"],
+        project_root=tmp_path,
+        resolve_paths=lambda _root: selected,
+        service_factory=FakeService,
+    )
+
+    assert exit_code == 2
+    assert seen == [selected.exporter]

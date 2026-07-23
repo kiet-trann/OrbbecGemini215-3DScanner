@@ -1178,9 +1178,9 @@ def _read_obj_mesh(path: Path) -> tuple[list[tuple[float, float, float]], list[t
 
 def main() -> int:
     project_root = Path(__file__).resolve().parents[3]
-    rtabmap_root = project_root / "third_party" / "rtabmap" / "RTABMap-0.23.1-win64"
     session_dir = Path.home() / "Documents" / "RTAB-Map"
-    runtime = RtabmapRuntime(RtabmapRuntime.discover(rtabmap_root))
+    paths = RtabmapRuntime.resolve(project_root)
+    runtime = RtabmapRuntime(paths)
     bridge = WindowsRtabmapBridge()
     monitor = ActivityMonitor(pause=bridge.pause)
     catalog = SessionCatalog(session_dir, project_root / "outputs" / "scanner_3d" / "catalog.json")
@@ -1190,7 +1190,7 @@ def main() -> int:
     root = ctk.CTk()
     Scanner3DWindow(root, controller=controller, monitor=monitor,
                          probe=SessionDatabaseProbe(session_dir), catalog=catalog,
-                         exporter=ExportService(exporter=runtime._paths.exporter),
+                         exporter=ExportService(exporter=paths.exporter),
                          output_root=project_root / "outputs" / "scanner_3d")
     root.mainloop()
     return 0
