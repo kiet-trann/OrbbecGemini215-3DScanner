@@ -32,3 +32,6 @@ target-version = "py310"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+markers = [
+  "integration: opt-in tests that launch native RTAB-Map tools",
+]

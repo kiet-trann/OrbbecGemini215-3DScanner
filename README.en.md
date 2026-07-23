@@ -45,8 +45,27 @@ git lfs pull
 The following files must then exist:
 
 ```text
+third_party\rtabmap\RTABMap-0.23.8-win64\bin\RTABMap.exe
+third_party\rtabmap\RTABMap-0.23.8-win64\bin\rtabmap-export.exe
 third_party\rtabmap\RTABMap-0.23.1-win64\bin\RTABMap.exe
 third_party\rtabmap\RTABMap-0.23.1-win64\bin\rtabmap-export.exe
+```
+
+RTAB-Map 0.23.8 is the default runtime. The retained 0.23.1 bundle is available
+for rollback. Gemini 215 firmware 1.0.9 is recommended for this tested
+configuration.
+
+To use 0.23.1 for one PowerShell launch, set the override before starting the
+application:
+
+```powershell
+$env:SCANNER_RTABMAP_VERSION='0.23.1'
+```
+
+Restore the 0.23.8 default in that PowerShell session with:
+
+```powershell
+Remove-Item Env:SCANNER_RTABMAP_VERSION -ErrorAction SilentlyContinue
 ```
 
 If the project environment does not exist yet, open PowerShell in the cloned
@@ -156,12 +175,41 @@ can inspect the model.
 | Content | Location |
 | --- | --- |
 | Saved RTAB-Map database | `%USERPROFILE%\Documents\RTAB-Map` |
-| RTAB-Map runtime | `third_party\rtabmap\RTABMap-0.23.1-win64` |
+| Default RTAB-Map runtime | `third_party\rtabmap\RTABMap-0.23.8-win64` |
+| Retained rollback runtime | `third_party\rtabmap\RTABMap-0.23.1-win64` |
 | Raw and cropped OBJ files | `outputs\scanner_3d` |
 
 `third_party/rtabmap` is managed by Git LFS. Scan files, raw OBJ files, and
 cropped OBJ files in `outputs/scanner_3d` are generated operating data and
 must not be committed to Git.
+
+## Native runtime regressions
+
+Native tests are opt-in so an ordinary test run never opens RTAB-Map or exports
+a saved session. To exercise the selected runtime against a real saved
+database:
+
+```powershell
+$env:RTABMAP_INTEGRATION_DB='C:\Users\you\Documents\RTAB-Map\scan.db'
+& .\.venv\Scripts\python.exe -m pytest tests\test_rtabmap_runtime_integration.py -q -k exports
+Remove-Item Env:RTABMAP_INTEGRATION_DB -ErrorAction SilentlyContinue
+```
+
+The export regression writes only to pytest's temporary output directory. It
+checks the source database size and SHA-256 before and after export and
+requires the source database to remain unchanged.
+
+Run the real GUI smoke test only on an interactive Windows desktop with no
+other RTAB-Map instance open:
+
+```powershell
+$env:RTABMAP_GUI_SMOKE='1'
+& .\.venv\Scripts\python.exe -m pytest tests\test_rtabmap_runtime_integration.py -q -k launches
+Remove-Item Env:RTABMAP_GUI_SMOKE -ErrorAction SilentlyContinue
+```
+
+The GUI smoke test opens no camera and no database, waits up to 20 seconds for
+a visible RTAB-Map window, and closes only the process it spawned.
 
 ## Prototype scope
 

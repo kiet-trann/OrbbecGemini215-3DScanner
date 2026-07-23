@@ -41,8 +41,27 @@ git lfs pull
 Sau đó cần có các file sau:
 
 ```text
+third_party\rtabmap\RTABMap-0.23.8-win64\bin\RTABMap.exe
+third_party\rtabmap\RTABMap-0.23.8-win64\bin\rtabmap-export.exe
 third_party\rtabmap\RTABMap-0.23.1-win64\bin\RTABMap.exe
 third_party\rtabmap\RTABMap-0.23.1-win64\bin\rtabmap-export.exe
+```
+
+RTAB-Map 0.23.8 là runtime mặc định (default). Bundle 0.23.1 được giữ lại để
+rollback. Firmware 1.0.9 được khuyến nghị cho Gemini 215 với cấu hình đã kiểm
+thử này.
+
+Để dùng 0.23.1 cho một lần chạy từ PowerShell, đặt override trước khi mở ứng
+dụng:
+
+```powershell
+$env:SCANNER_RTABMAP_VERSION='0.23.1'
+```
+
+Khôi phục mặc định 0.23.8 trong PowerShell hiện tại bằng:
+
+```powershell
+Remove-Item Env:SCANNER_RTABMAP_VERSION -ErrorAction SilentlyContinue
 ```
 
 Nếu chưa có environment Python:
@@ -141,12 +160,41 @@ trong khoảng 3 giây, app chỉ gửi lệnh **Pause** để bạn kiểm tra 
 | Nội dung | Vị trí |
 | --- | --- |
 | Database RTAB-Map đã lưu | `%USERPROFILE%\Documents\RTAB-Map` |
-| Runtime RTAB-Map | `third_party\rtabmap\RTABMap-0.23.1-win64` |
+| Runtime RTAB-Map mặc định | `third_party\rtabmap\RTABMap-0.23.8-win64` |
+| Runtime rollback được giữ lại | `third_party\rtabmap\RTABMap-0.23.1-win64` |
 | Raw OBJ và cropped OBJ | `outputs\scanner_3d` |
 
 `third_party/rtabmap` được quản lý bằng Git LFS. Các file scan, raw OBJ và crop
 OBJ trong `outputs/scanner_3d` là dữ liệu sinh ra khi vận hành, không nên
 commit lên Git.
+
+## Kiểm thử hồi quy runtime native
+
+Các test native chỉ chạy khi opt-in, nên lần chạy test thông thường không mở
+RTAB-Map và không export session đã lưu. Để kiểm thử runtime đang được chọn với
+một database thật:
+
+```powershell
+$env:RTABMAP_INTEGRATION_DB='C:\Users\you\Documents\RTAB-Map\scan.db'
+& .\.venv\Scripts\python.exe -m pytest tests\test_rtabmap_runtime_integration.py -q -k exports
+Remove-Item Env:RTABMAP_INTEGRATION_DB -ErrorAction SilentlyContinue
+```
+
+Test export chỉ ghi vào thư mục tạm của pytest. Test kiểm tra kích thước và
+SHA-256 của database nguồn trước và sau khi export, đồng thời yêu cầu database
+nguồn không thay đổi.
+
+Chỉ chạy GUI smoke test trên Windows desktop tương tác và khi không có instance
+RTAB-Map nào khác đang mở:
+
+```powershell
+$env:RTABMAP_GUI_SMOKE='1'
+& .\.venv\Scripts\python.exe -m pytest tests\test_rtabmap_runtime_integration.py -q -k launches
+Remove-Item Env:RTABMAP_GUI_SMOKE -ErrorAction SilentlyContinue
+```
+
+GUI smoke test không mở camera hoặc database, chờ tối đa 20 giây để thấy cửa
+sổ RTAB-Map và chỉ đóng tiến trình do chính test khởi chạy.
 
 ## Ghi chú về prototype cũ
 
