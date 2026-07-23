@@ -21,6 +21,7 @@ from scanner_app.rtabmap.obj_crop import CropRectangle, CropResult
 from scanner_app.rtabmap.exporter import ExportResult
 from scanner_app.rtabmap.windows_bridge import BridgeResult
 from scanner_app.camera.models import CameraProfile, CameraSettingsSnapshot, CaptureConfig
+from scanner_app.camera.preflight import CameraPreflightError
 from scanner_app.visualization.crop_catalog import CroppedObjOutput
 from scanner_app.visualization.dashboard_theme import PRIMARY
 from scanner_app.visualization.navigation import DashboardPage
@@ -90,10 +91,11 @@ def make_snapshot(profile: CameraProfile = CameraProfile.NEAR) -> CameraSettings
         supported_modes=("Close_Up Precision Mode", "Long-distance Mode"),
         device_name="Gemini 215",
         serial_number="G215-123",
-        firmware_version="1.0.0",
+        firmware_version="1.0.9",
         capture_config=CaptureConfig(),
         alignment_target="depth",
         enabled_depth_filters=("TemporalFilter",),
+        connection_type="USB3.0",
     )
 
 
@@ -133,6 +135,20 @@ def test_apply_and_launch_runs_verified_preflight_before_runtime_launch() -> Non
     assert result.running
 
 
+def test_apply_and_launch_does_not_launch_runtime_after_usb_preflight_failure() -> None:
+    class RejectingPreflight:
+        def apply(self, _profile: CameraProfile) -> CameraSettingsSnapshot:
+            raise CameraPreflightError("Gemini 215 yêu cầu kết nối USB 3")
+
+    runtime = FakeRuntime(RuntimeStatus(False, "RTAB-Map is not running"))
+    controller = make_controller(runtime=runtime, preflight=RejectingPreflight())
+
+    with pytest.raises(CameraPreflightError, match="USB 3"):
+        controller.apply_and_launch()
+
+    assert runtime.launch_calls == 0
+
+
 def test_controller_blocks_profile_changes_and_preflight_while_rtabmap_runs() -> None:
     controller = make_controller(runtime=FakeRuntime(RuntimeStatus(True, "RTAB-Map is running")))
 
@@ -147,11 +163,15 @@ def test_camera_settings_rows_show_defaults_before_inspection_and_snapshot_after
     assert ("Depth work mode", "Unavailable until inspection") in camera_settings_rows(
         CameraProfile.NEAR, None
     )
+    assert ("Connection", "Unavailable until inspection") in camera_settings_rows(
+        CameraProfile.NEAR, None
+    )
 
     rows = camera_settings_rows(CameraProfile.NEAR, make_snapshot())
 
     assert ("Depth work mode", "Close_Up Precision Mode") in rows
     assert ("Supported depth modes", "Close_Up Precision Mode; Long-distance Mode") in rows
+    assert ("Connection", "USB3.0") in rows
     assert ("Enabled depth filters", "TemporalFilter") in rows
 
 
@@ -183,6 +203,7 @@ def test_camera_dashboard_keeps_orbbec_sdk_terms_after_inspection() -> None:
 
     assert device.title == "Gemini 215"
     assert "Close_Up Precision Mode" in device.inspection_label
+    assert "USB3.0" in device.inspection_label
     assert ("Enabled depth filters", "TemporalFilter") in groups[1].facts
 
 

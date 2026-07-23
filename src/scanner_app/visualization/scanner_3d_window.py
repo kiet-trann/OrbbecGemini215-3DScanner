@@ -130,10 +130,11 @@ def camera_dashboard_cards(
         filters = "Chưa kiểm tra"
         alignment = "Chưa kiểm tra"
     else:
+        connection = snapshot.connection_type or "USB không xác định"
         device = CameraDeviceCard(
             snapshot.device_name,
             f"{snapshot.serial_number} · Firmware {snapshot.firmware_version}",
-            f"{snapshot.confirmed_mode} · căn chỉnh {snapshot.alignment_target}",
+            f"{snapshot.confirmed_mode} · {connection} · căn chỉnh {snapshot.alignment_target}",
         )
         config = snapshot.capture_config
         filters = "; ".join(snapshot.enabled_depth_filters) or "None"
@@ -218,6 +219,11 @@ def camera_settings_rows(
     device_name = snapshot.device_name if snapshot is not None else "Unavailable until inspection"
     serial = snapshot.serial_number if snapshot is not None else "Unavailable until inspection"
     firmware = snapshot.firmware_version if snapshot is not None else "Unavailable until inspection"
+    connection = (
+        snapshot.connection_type
+        if snapshot is not None and snapshot.connection_type
+        else "Unavailable until inspection"
+    )
     alignment = snapshot.alignment_target if snapshot is not None else "Unavailable until inspection"
     filters = "; ".join(snapshot.enabled_depth_filters) if snapshot is not None else "Unavailable"
     return (
@@ -229,6 +235,7 @@ def camera_settings_rows(
         ("Device", device_name or "Unavailable"),
         ("Serial number", serial or "Unavailable"),
         ("Firmware", firmware or "Unavailable"),
+        ("Connection", connection),
         ("Depth stream", f"{config.depth_width}x{config.depth_height} {config.depth_format} @ {config.depth_fps} FPS"),
         ("Color stream", f"{config.color_width}x{config.color_height} {config.color_format} @ {config.color_fps} FPS"),
         ("Depth range", f"{config.depth_min_m:.2f}-{config.depth_max_m:.2f} m"),
