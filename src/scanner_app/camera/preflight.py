@@ -38,12 +38,26 @@ class CameraPreflight:
             sdk = self._sdk or self._load_sdk()
             context = self._context(sdk)
             device = self._connected_device(context)
+            device_info = self._optional_call(device, "get_device_info")
+            connection_type = self._optional_device_info_value(
+                device_info, "get_connection_type"
+            )
+            if apply:
+                self._require_usb3(connection_type)
             modes = self._work_modes(device)
             selected = self._selected_mode(profile, modes)
             if apply and self._mode_name(device.get_depth_work_mode()) != self._mode_name(selected):
                 device.set_depth_work_mode(selected)
             state = "applied-and-verified" if apply else "inspected"
-            snapshot = self._snapshot(profile, state, device, modes, sdk)
+            snapshot = self._snapshot(
+                profile,
+                state,
+                device,
+                modes,
+                sdk,
+                device_info,
+                connection_type,
+            )
             if apply and snapshot.confirmed_mode != self._mode_name(selected):
                 raise CameraPreflightError("Camera did not retain the requested depth work mode.")
             return snapshot
@@ -109,8 +123,9 @@ class CameraPreflight:
         device: Any,
         modes: tuple[Any, ...],
         sdk: Any,
+        device_info: Any | None,
+        connection_type: str | None,
     ) -> CameraSettingsSnapshot:
-        device_info = self._optional_call(device, "get_device_info")
         return CameraSettingsSnapshot(
             profile=profile,
             preflight_state=state,
@@ -122,7 +137,27 @@ class CameraPreflight:
             capture_config=self._capture_config,
             alignment_target=self._alignment_target,
             enabled_depth_filters=self._enabled_depth_filters(device, sdk),
+            connection_type=connection_type,
         )
+
+    @staticmethod
+    def _require_usb3(connection_type: str | None) -> None:
+        normalized = (
+            "".join(
+                character
+                for character in connection_type.casefold()
+                if character.isalnum()
+            )
+            if connection_type
+            else ""
+        )
+        if not normalized.startswith("usb3"):
+            observed = connection_type or "không xác định"
+            raise CameraPreflightError(
+                "Gemini 215 đang kết nối dưới tốc độ USB 3 "
+                f"(phát hiện: {observed}). Hãy đóng ứng dụng camera khác, "
+                "rút/cắm lại camera bằng cổng và cáp USB 3, rồi kiểm tra lại camera."
+            )
 
     @staticmethod
     def _mode_name(mode: Any) -> str:

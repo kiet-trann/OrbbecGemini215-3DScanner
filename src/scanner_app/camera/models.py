@@ -106,3 +106,4 @@ class CameraSettingsSnapshot:
     capture_config: CaptureConfig
     alignment_target: str
     enabled_depth_filters: tuple[str, ...]
+    connection_type: str | None = None

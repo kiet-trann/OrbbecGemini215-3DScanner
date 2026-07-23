@@ -23,6 +23,9 @@ class FakeDepthWorkModeList:
 
 
 class FakeDeviceInfo:
+    def __init__(self, connection_type: str | None = "USB3.0") -> None:
+        self._connection_type = connection_type
+
     def get_name(self) -> str:
         return "Gemini 215"
 
@@ -32,12 +35,22 @@ class FakeDeviceInfo:
     def get_firmware_version(self) -> str:
         return "1.0.0"
 
+    def get_connection_type(self) -> str | None:
+        return self._connection_type
+
 
 class FakeDevice:
-    def __init__(self, modes: tuple[str, ...], *, retain_mode: bool = True) -> None:
+    def __init__(
+        self,
+        modes: tuple[str, ...],
+        *,
+        retain_mode: bool = True,
+        connection_type: str | None = "USB3.0",
+    ) -> None:
         self._modes = FakeDepthWorkModeList(modes)
         self.selected_depth_mode = modes[0]
         self.retain_mode = retain_mode
+        self.connection_type = connection_type
         self.set_mode_calls = 0
 
     def get_depth_work_mode_list(self) -> FakeDepthWorkModeList:
@@ -52,7 +65,7 @@ class FakeDevice:
             self.selected_depth_mode = mode.name
 
     def get_device_info(self) -> FakeDeviceInfo:
-        return FakeDeviceInfo()
+        return FakeDeviceInfo(self.connection_type)
 
 
 class FakeDeviceList:
@@ -84,8 +97,18 @@ class FakePipeline:
 
 
 class FakeSdk:
-    def __init__(self, modes: tuple[str, ...], *, retain_mode: bool = True) -> None:
-        self.device = FakeDevice(modes, retain_mode=retain_mode)
+    def __init__(
+        self,
+        modes: tuple[str, ...],
+        *,
+        retain_mode: bool = True,
+        connection_type: str | None = "USB3.0",
+    ) -> None:
+        self.device = FakeDevice(
+            modes,
+            retain_mode=retain_mode,
+            connection_type=connection_type,
+        )
         self.context = FakeContext(self.device)
         self.pipeline = FakePipeline()
 
@@ -130,4 +153,49 @@ def test_apply_rejects_mode_that_does_not_remain_selected() -> None:
 
     with pytest.raises(CameraPreflightError, match="did not retain"):
         CameraPreflight(sdk_module=sdk).apply(CameraProfile.FAR)
+
+
+def test_inspect_reports_usb2_without_rejecting_read_only_diagnostics() -> None:
+    sdk = FakeSdk(("Close_Up Precision Mode",), connection_type="USB2.0")
+
+    snapshot = CameraPreflight(sdk_module=sdk).inspect(CameraProfile.NEAR)
+
+    assert snapshot.connection_type == "USB2.0"
+    assert sdk.device.set_mode_calls == 0
+    assert sdk.context.closed
+
+
+@pytest.mark.parametrize("connection_type", ["USB3.0", "USB 3.0", "usb3"])
+def test_apply_accepts_normalized_usb3_connection(connection_type: str) -> None:
+    sdk = FakeSdk(
+        ("Close_Up Precision Mode", "Long-distance Mode"),
+        connection_type=connection_type,
+    )
+
+    snapshot = CameraPreflight(sdk_module=sdk).apply(CameraProfile.FAR)
+
+    assert snapshot.connection_type == connection_type
+    assert sdk.device.set_mode_calls == 1
+
+
+def test_apply_rejects_usb2_before_changing_depth_mode() -> None:
+    sdk = FakeSdk(
+        ("Close_Up Precision Mode", "Long-distance Mode"),
+        connection_type="USB2.0",
+    )
+
+    with pytest.raises(CameraPreflightError, match="USB 3"):
+        CameraPreflight(sdk_module=sdk).apply(CameraProfile.FAR)
+
+    assert sdk.device.set_mode_calls == 0
+    assert sdk.context.closed
+
+
+def test_apply_rejects_missing_connection_metadata() -> None:
+    sdk = FakeSdk(("Close_Up Precision Mode",), connection_type=None)
+
+    with pytest.raises(CameraPreflightError, match="không xác định"):
+        CameraPreflight(sdk_module=sdk).apply(CameraProfile.NEAR)
+
+    assert sdk.context.closed
 
