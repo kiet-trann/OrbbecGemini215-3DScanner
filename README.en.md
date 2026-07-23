@@ -55,6 +55,20 @@ RTAB-Map 0.23.8 is the default runtime. The retained 0.23.1 bundle is available
 for rollback. Gemini 215 firmware 1.0.9 is recommended for this tested
 configuration.
 
+The packaged official 0.23.8 portable bundle reports these actual versions:
+
+| Component | Actual version |
+| --- | --- |
+| OrbbecSDK | 2.8.7 |
+| OpenCV | 4.12.0 |
+| PCL | 1.15.1 |
+| VTK | 9.3.20231030 |
+
+These values come directly from `rtabmap-export.exe --version` and the
+ProductVersion metadata of `OrbbecSDK.dll`. In particular, OpenCV and PCL
+differ from the 0.23.8 release-note/design expectations (OpenCV 4.13.0 and
+PCL 1.15.0); the versions in the portable bundle are authoritative at runtime.
+
 To use 0.23.1 for one PowerShell launch, set the override before starting the
 application:
 

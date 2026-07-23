@@ -47,6 +47,22 @@ def test_rtabmap_runtime_rollback_and_native_regressions_are_documented() -> Non
     assert "unchanged" in readmes["README.en.md"].lower()
 
 
+def test_readmes_document_the_actual_0238_portable_runtime_dependencies() -> None:
+    readmes = {
+        name: Path(name).read_text(encoding="utf-8")
+        for name in ("README.md", "README.en.md")
+    }
+
+    for text in readmes.values():
+        assert "| OrbbecSDK | 2.8.7 |" in text
+        assert "| OpenCV | 4.12.0 |" in text
+        assert "| PCL | 1.15.1 |" in text
+        assert "| VTK | 9.3.20231030 |" in text
+        assert "OpenCV 4.13.0" in text
+        assert "PCL 1.15.0" in text
+        assert "release" in text.lower()
+
+
 def test_pytest_registers_the_native_integration_marker() -> None:
     configuration = tomllib.loads(Path("pyproject.toml").read_text(encoding="utf-8"))
 
